@@ -1,0 +1,6 @@
+{
+  "name": "SGC-6 - Gestão e Cautela 6º BPM",
+  "description": "Sistema de Gestão e Cautela do 6º Batalhão de Polícia Militar com controle de material bélico, comunicações, viaturas, informática e mobiliário.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
