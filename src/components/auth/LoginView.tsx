@@ -92,7 +92,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
-              6º Batalhão de Polícia Militar • Batalhão Cel. Silvino Silvany (Caicó/RN)
+              6º Batalhão de Polícia Militar • Batalhão Senador Dinarte Mariz (Caicó/RN)
             </p>
           </div>
         </div>

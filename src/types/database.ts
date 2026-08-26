@@ -294,6 +294,7 @@ export interface ItemComDetalhes extends ItemPatrimonio {
   };
   alocacao_atual?: {
     id_alocacao: number;
+    id_unidade?: number;
     unidade_nome: string;
     data_alocacao: string;
   };

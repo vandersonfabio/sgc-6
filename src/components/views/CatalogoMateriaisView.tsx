@@ -21,7 +21,88 @@ import {
   Boxes,
   Info,
   AlertOctagon,
+  RefreshCw,
+  Database,
+  Copy,
+  FileCode,
+  Sparkles,
 } from 'lucide-react';
+
+const SQL_TIPO_MATERIAL_SEED = `-- ==============================================================================
+-- SCRIPT DE ALIMENTAÇÃO DA TABELA: tipo_material (CATÁLOGO CANÔNICO DE MATERIAIS)
+-- Execute no SQL Editor do Supabase para popular/restaurar os 25 tipos de materiais padrão
+-- ==============================================================================
+
+INSERT INTO tipo_material (
+    id_tipo_material,
+    nome,
+    modulo,
+    modo_controle,
+    categoria_especializada,
+    permite_marca,
+    permite_modelo,
+    permite_numero_serie,
+    exige_numero_serie,
+    permite_numero_tombo,
+    exige_numero_tombo,
+    permite_lote_validade,
+    descricao,
+    status
+) VALUES
+-- Módulo Armas
+(1, 'Pistola', 'Armas', 'INDIVIDUAL', 'ARMA', true, true, true, true, true, false, false, 'Armamento de porte individual (Pistolas Beretta, Glock, Taurus, Imbel)', 'Ativo'),
+(2, 'Fuzil / Carabina', 'Armas', 'INDIVIDUAL', 'ARMA', true, true, true, true, true, false, false, 'Armamento longo portátil de alta energia (IA2, FAL, AR-15, CT 40)', 'Ativo'),
+(3, 'Espingarda Calibre 12', 'Armas', 'INDIVIDUAL', 'ARMA', true, true, true, true, true, false, false, 'Armamento de alma lisa cal. 12 (CBC Military 3.0, Benelli)', 'Ativo'),
+(4, 'Colete Balístico', 'Armas', 'INDIVIDUAL', 'COLETE', true, true, true, false, true, false, false, 'Equipamento de Proteção Individual balística nível II / III-A', 'Ativo'),
+(5, 'Escudo Balístico / Choque', 'Armas', 'INDIVIDUAL', 'COLETE', true, true, true, false, true, false, false, 'Proteção tática de confronto e controle de distúrbios', 'Ativo'),
+(6, 'Espargidor Menos Letal (IMPO)', 'Armas', 'HIBRIDO', 'IMPO', true, true, true, false, true, false, false, 'Agentes químicos incapacitantes (OC / CS / Espargidores GL)', 'Ativo'),
+(7, 'Algema de Aço / Metálica', 'Armas', 'HIBRIDO', 'NENHUMA', true, true, true, false, true, false, false, 'Instrumento de imobilização com corrente ou dobradiça', 'Ativo'),
+(8, 'Munição Operacional / Treino', 'Armas', 'QUANTIDADE', 'NENHUMA', true, true, false, false, false, false, false, 'Cartuchos e projéteis controlados por lote e quantidade', 'Ativo'),
+(9, 'Algema Descartável / Plástica', 'Armas', 'QUANTIDADE', 'NENHUMA', true, true, false, false, false, false, false, 'Fitas e lacres plásticos descartáveis de contenção', 'Ativo'),
+(10, 'Tonfa / Bastão Policial', 'Armas', 'HIBRIDO', 'NENHUMA', true, true, false, false, true, false, false, 'Equipamento de impacto e autodefesa para policiamento ostensivo', 'Ativo'),
+(101, 'Arma Elétrica / Menos Letal (Spark / Taser)', 'Armas', 'INDIVIDUAL', 'NENHUMA', true, true, true, true, true, false, false, 'Dispositivo elétrico incapacitante de baixa letalidade', 'Ativo'),
+(102, 'Cartucho / Dardo Elétrico (Spark / Taser)', 'Armas', 'QUANTIDADE', 'NENHUMA', true, true, false, false, false, false, false, 'Munição descartável para dispositivos condutores de energia', 'Ativo'),
+(103, 'Outro Material / Equipamento Bélico', 'Armas', 'HIBRIDO', 'NENHUMA', true, true, true, false, true, false, false, 'Acessórios táticos, coldres, porta-carregadores e dotações diversas', 'Ativo'),
+
+-- Módulo Comunicação
+(11, 'Rádio Portátil HT', 'Comunicação', 'INDIVIDUAL', 'COMUNICACAO', true, true, true, true, true, false, false, 'Transceptor portátil digital/analógico (Motorola APX/DGP)', 'Ativo'),
+(12, 'Smartphone Operacional', 'Comunicação', 'INDIVIDUAL', 'COMUNICACAO', true, true, true, true, true, false, false, 'Terminal móvel de dados e viatura', 'Ativo'),
+(13, 'Rádio Base Móvel VTR', 'Comunicação', 'INDIVIDUAL', 'COMUNICACAO', true, true, true, true, true, false, false, 'Transceptor veicular fixo de rádio comunicação', 'Ativo'),
+(14, 'Bateria / Acessório de Rádio', 'Comunicação', 'HIBRIDO', 'NENHUMA', true, true, true, false, true, false, false, 'Baterias sobressalentes, microfones de lapela, antenas e carregadores', 'Ativo'),
+
+-- Módulo Viaturas
+(15, 'Viatura 4 Rodas (Camionete/SUV)', 'Viaturas', 'INDIVIDUAL', 'VIATURA', true, true, false, false, false, false, false, 'Veículos operacionais de radiopatrulha e transporte', 'Ativo'),
+(16, 'Motocicleta Policial', 'Viaturas', 'INDIVIDUAL', 'VIATURA', true, true, false, false, false, false, false, 'Motocicletas de patrulhamento tático e escolta', 'Ativo'),
+
+-- Módulo Informática
+(17, 'Computador Desktop / CPU', 'Informática', 'INDIVIDUAL', 'INFORMATICA', true, true, true, false, true, true, false, 'Estações de trabalho do quartel e seções administrativas', 'Ativo'),
+(18, 'Notebook / Laptop', 'Informática', 'INDIVIDUAL', 'INFORMATICA', true, true, true, false, true, true, false, 'Computadores portáteis para uso operacional e comando', 'Ativo'),
+(19, 'Monitor de Vídeo', 'Informática', 'INDIVIDUAL', 'INFORMATICA', true, true, true, false, true, true, false, 'Monitores LED/LCD das seções do batalhão', 'Ativo'),
+(20, 'Nobreak / Estabilizador', 'Informática', 'HIBRIDO', 'INFORMATICA', true, true, true, false, true, false, false, 'Condicionadores e protetores de energia elétrica', 'Ativo'),
+(21, 'Impressora / Multifuncional', 'Informática', 'INDIVIDUAL', 'INFORMATICA', true, true, true, false, true, true, false, 'Equipamentos de impressão e digitalização documental', 'Ativo'),
+
+-- Módulo Móveis e Diversos
+(22, 'Armário Cofre / Cofre Bélico', 'Móveis e Diversos', 'INDIVIDUAL', 'NENHUMA', true, true, false, false, true, true, false, 'Mobiliário de alta segurança para guarda de armamento', 'Ativo'),
+(23, 'Mobiliário Administrativo (Mesa/Estante)', 'Móveis e Diversos', 'HIBRIDO', 'NENHUMA', true, true, false, false, true, false, false, 'Mesas, armários de aço, gaveteiros e estantes', 'Ativo'),
+(24, 'Cadeira / Assento Operacional', 'Móveis e Diversos', 'HIBRIDO', 'NENHUMA', true, true, false, false, true, false, false, 'Cadeiras giratórias, fixas e poltronas administrativas', 'Ativo'),
+(25, 'Ar Condicionado / Climatizador', 'Móveis e Diversos', 'INDIVIDUAL', 'NENHUMA', true, true, true, false, true, true, false, 'Aparelhos de climatização instalados nas dependências', 'Ativo')
+ON CONFLICT (id_tipo_material) DO UPDATE SET
+    nome = EXCLUDED.nome,
+    modulo = EXCLUDED.modulo,
+    modo_controle = EXCLUDED.modo_controle,
+    categoria_especializada = EXCLUDED.categoria_especializada,
+    permite_marca = EXCLUDED.permite_marca,
+    permite_modelo = EXCLUDED.permite_modelo,
+    permite_numero_serie = EXCLUDED.permite_numero_serie,
+    exige_numero_serie = EXCLUDED.exige_numero_serie,
+    permite_numero_tombo = EXCLUDED.permite_numero_tombo,
+    exige_numero_tombo = EXCLUDED.exige_numero_tombo,
+    permite_lote_validade = EXCLUDED.permite_lote_validade,
+    descricao = EXCLUDED.descricao,
+    status = EXCLUDED.status;
+
+-- Sincronizar o contador automático de ID (Sequence)
+SELECT setval(pg_get_serial_sequence('tipo_material', 'id_tipo_material'), COALESCE(MAX(id_tipo_material), 1) + 1, false) FROM tipo_material;`;
 
 export const CatalogoMateriaisView: React.FC = () => {
   const { db, tiposMateriais, isSuperuser, canManageUnidades } = useDatabase();
@@ -33,6 +114,10 @@ export const CatalogoMateriaisView: React.FC = () => {
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTipo, setEditingTipo] = useState<TipoMaterial | null>(null);
+  const [sqlModalOpen, setSqlModalOpen] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   // Form State
   const [formModulo, setFormModulo] = useState<ModuloTipo>('Armas');
@@ -61,104 +146,150 @@ export const CatalogoMateriaisView: React.FC = () => {
     return matchesModulo && matchesModo && matchesSearch;
   });
 
-    const handleOpenCreate = () => {
-      setEditingTipo(null);
-      setFormModulo('Armas');
-      setFormNome('');
-      setFormModo('INDIVIDUAL');
-      setFormPermiteSerie(true);
-      setFormExigeSerie(true);
-      setFormPermiteTombo(true);
-      setFormExigeTombo(false);
-      setFormCategoriaEsp('arma');
-      setFormDescricao('');
-      setErrorMessage(null);
-      setModalOpen(true);
-    };
-
-    const handleOpenEdit = (tipo: TipoMaterial) => {
-      setEditingTipo(tipo);
-      setFormModulo(tipo.modulo);
-      setFormNome(tipo.nome);
-      setFormModo(tipo.modo_controle);
-      setFormPermiteSerie(tipo.permite_numero_serie);
-      setFormExigeSerie(tipo.exige_numero_serie);
-      setFormPermiteTombo(tipo.permite_numero_tombo);
-      setFormExigeTombo(tipo.exige_numero_tombo);
-      setFormCategoriaEsp(tipo.categoria_especializada);
-      setFormDescricao(tipo.descricao || '');
-      setErrorMessage(null);
-      setModalOpen(true);
-    };
-
-    const handleDelete = (id_tipo: number, nome: string) => {
-      setTipoToDelete({ id: id_tipo, nome });
-    };
-
-    const confirmDelete = () => {
-      if (!tipoToDelete) return;
-      const res = db.excluirTipoMaterial(tipoToDelete.id);
+  const handlePullFromSupabase = async () => {
+    setIsPulling(true);
+    setErrorMessage(null);
+    try {
+      const res = await db.pullAllFromSupabase();
       if (res.success) {
-        setSuccessMessage(`Tipo de material "${tipoToDelete.nome}" excluído com sucesso.`);
+        setSuccessMessage('Dados atualizados da base de dados Supabase com sucesso!');
         setTimeout(() => setSuccessMessage(null), 4000);
-        setTipoToDelete(null);
       } else {
-        setErrorMessage(res.error || 'Erro ao excluir tipo de material.');
-        setTimeout(() => setErrorMessage(null), 5000);
+        setErrorMessage(res.error || 'Erro ao sincronizar dados com o Supabase.');
       }
-    };
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Erro inesperado na sincronização.');
+    } finally {
+      setIsPulling(false);
+    }
+  };
 
-    const handleFormSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      setErrorMessage(null);
-
-      if (!formNome.trim()) {
-        setErrorMessage('Informe o nome do material.');
-        return;
-      }
-
-      if (editingTipo) {
-        const res = db.atualizarTipoMaterial(editingTipo.id_tipo_material, {
-          modulo: formModulo,
-          nome: formNome.trim(),
-          modo_controle: formModo,
-          permite_numero_serie: formPermiteSerie,
-          exige_numero_serie: formExigeSerie,
-          permite_numero_tombo: formPermiteTombo,
-          exige_numero_tombo: formExigeTombo,
-          categoria_especializada: formCategoriaEsp,
-          descricao: formDescricao.trim() || undefined,
-        });
-
-        if (res.success) {
-          setSuccessMessage(`Tipo de material "${formNome}" atualizado com sucesso.`);
-          setTimeout(() => setSuccessMessage(null), 4000);
-          setModalOpen(false);
+  const handleSemearCatalogo = async () => {
+    setIsSeeding(true);
+    setErrorMessage(null);
+    try {
+      const res = await db.semearCatalogoPadrao();
+      if (res.success) {
+        if (res.count > 0) {
+          setSuccessMessage(`${res.count} tipos de materiais padrão foram inseridos com sucesso.`);
         } else {
-          setErrorMessage(res.error || 'Erro ao atualizar tipo de material.');
+          setSuccessMessage('Todos os 25 tipos de materiais padrão já estão presentes.');
         }
+        setTimeout(() => setSuccessMessage(null), 4000);
       } else {
-        const res = db.cadastrarTipoMaterial({
-          modulo: formModulo,
-          nome: formNome.trim(),
-          modo_controle: formModo,
-          permite_numero_serie: formPermiteSerie,
-          exige_numero_serie: formExigeSerie,
-          permite_numero_tombo: formPermiteTombo,
-          exige_numero_tombo: formExigeTombo,
-          categoria_especializada: formCategoriaEsp,
-          descricao: formDescricao.trim() || undefined,
-        });
-
-        if (res.success) {
-          setSuccessMessage(`Tipo de material "${formNome}" cadastrado com sucesso.`);
-          setTimeout(() => setSuccessMessage(null), 4000);
-          setModalOpen(false);
-        } else {
-          setErrorMessage(res.error || 'Erro ao cadastrar tipo de material.');
-        }
+        setErrorMessage(res.error || 'Erro ao semear catálogo padrão.');
       }
-    };
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Falha ao executar semeadura.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SQL_TIPO_MATERIAL_SEED);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 3000);
+  };
+
+  const handleOpenCreate = () => {
+    setEditingTipo(null);
+    setFormModulo('Armas');
+    setFormNome('');
+    setFormModo('INDIVIDUAL');
+    setFormPermiteSerie(true);
+    setFormExigeSerie(true);
+    setFormPermiteTombo(true);
+    setFormExigeTombo(false);
+    setFormCategoriaEsp('arma');
+    setFormDescricao('');
+    setErrorMessage(null);
+    setModalOpen(true);
+  };
+
+  const handleOpenEdit = (tipo: TipoMaterial) => {
+    setEditingTipo(tipo);
+    setFormModulo(tipo.modulo);
+    setFormNome(tipo.nome);
+    setFormModo(tipo.modo_controle);
+    setFormPermiteSerie(tipo.permite_numero_serie);
+    setFormExigeSerie(tipo.exige_numero_serie);
+    setFormPermiteTombo(tipo.permite_numero_tombo);
+    setFormExigeTombo(tipo.exige_numero_tombo);
+    setFormCategoriaEsp(tipo.categoria_especializada);
+    setFormDescricao(tipo.descricao || '');
+    setErrorMessage(null);
+    setModalOpen(true);
+  };
+
+  const handleDelete = (id_tipo: number, nome: string) => {
+    setTipoToDelete({ id: id_tipo, nome });
+  };
+
+  const confirmDelete = () => {
+    if (!tipoToDelete) return;
+    const res = db.excluirTipoMaterial(tipoToDelete.id);
+    if (res.success) {
+      setSuccessMessage(`Tipo de material "${tipoToDelete.nome}" excluído com sucesso.`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      setTipoToDelete(null);
+    } else {
+      setErrorMessage(res.error || 'Erro ao excluir tipo de material.');
+      setTimeout(() => setErrorMessage(null), 5000);
+    }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!formNome.trim()) {
+      setErrorMessage('Informe o nome do material.');
+      return;
+    }
+
+    if (editingTipo) {
+      const res = db.atualizarTipoMaterial(editingTipo.id_tipo_material, {
+        modulo: formModulo,
+        nome: formNome.trim(),
+        modo_controle: formModo,
+        permite_numero_serie: formPermiteSerie,
+        exige_numero_serie: formExigeSerie,
+        permite_numero_tombo: formPermiteTombo,
+        exige_numero_tombo: formExigeTombo,
+        categoria_especializada: formCategoriaEsp,
+        descricao: formDescricao.trim() || undefined,
+      });
+
+      if (res.success) {
+        setSuccessMessage(`Tipo de material "${formNome}" atualizado com sucesso.`);
+        setTimeout(() => setSuccessMessage(null), 4000);
+        setModalOpen(false);
+      } else {
+        setErrorMessage(res.error || 'Erro ao atualizar tipo de material.');
+      }
+    } else {
+      const res = db.cadastrarTipoMaterial({
+        modulo: formModulo,
+        nome: formNome.trim(),
+        modo_controle: formModo,
+        permite_numero_serie: formPermiteSerie,
+        exige_numero_serie: formExigeSerie,
+        permite_numero_tombo: formPermiteTombo,
+        exige_numero_tombo: formExigeTombo,
+        categoria_especializada: formCategoriaEsp,
+        descricao: formDescricao.trim() || undefined,
+      });
+
+      if (res.success) {
+        setSuccessMessage(`Tipo de material "${formNome}" cadastrado com sucesso.`);
+        setTimeout(() => setSuccessMessage(null), 4000);
+        setModalOpen(false);
+      } else {
+        setErrorMessage(res.error || 'Erro ao cadastrar tipo de material.');
+      }
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -169,21 +300,96 @@ export const CatalogoMateriaisView: React.FC = () => {
             <Boxes className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight">Catálogo e Modos de Controle de Materiais</h1>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-lg font-bold text-slate-900 tracking-tight">Catálogo e Modos de Controle de Materiais</h1>
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                <Database className="w-3 h-3 text-slate-500" />
+                <span>{tiposMateriais.length} {tiposMateriais.length === 1 ? 'registro' : 'registros'}</span>
+              </span>
+            </div>
             <p className="text-xs text-slate-500">
               Parametrização de regras: Individual (Nº Série/Tombo), Quantidade (Lotes) e Híbrido • 6º BPM
             </p>
           </div>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Novo Tipo de Material</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Puxar do Banco */}
+          <button
+            onClick={handlePullFromSupabase}
+            disabled={isPulling}
+            title="Recarrega todos os tipos de materiais diretamente da base de dados Supabase"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin text-indigo-600' : 'text-slate-600'}`} />
+            <span>{isPulling ? 'Puxando...' : 'Puxar do Banco'}</span>
+          </button>
+
+          {/* Ver SQL */}
+          <button
+            onClick={() => setSqlModalOpen(true)}
+            title="Exibir script SQL completo para inserir todos os tipos no Supabase"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition"
+          >
+            <FileCode className="w-3.5 h-3.5 text-indigo-600" />
+            <span>SQL Alimentação</span>
+          </button>
+
+          {/* Semear Padrão */}
+          {tiposMateriais.length < 25 && (
+            <button
+              onClick={handleSemearCatalogo}
+              disabled={isSeeding}
+              title="Inserir automaticamente os 25 tipos de materiais padrão do 6º BPM"
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300 transition disabled:opacity-50"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isSeeding ? 'Semeando...' : 'Semear 25 Padrões'}</span>
+            </button>
+          )}
+
+          {/* Novo Tipo */}
+          <button
+            onClick={handleOpenCreate}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Novo Tipo</span>
+          </button>
+        </div>
       </div>
+
+      {/* Database State Notice when 1 or few items in DB */}
+      {tiposMateriais.length <= 1 && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start space-x-2.5">
+            <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-950">
+                A base de dados possui atualmente {tiposMateriais.length} {tiposMateriais.length === 1 ? 'tipo de material' : 'tipos de material'} na tabela <code>tipo_material</code>.
+              </p>
+              <p className="text-amber-800 text-[11px] mt-0.5">
+                Para popular todas as 25 definições canônicas do batalhão (Armas, Viaturas, Comunicações, TI e Móveis), utilize o botão <strong>"SQL Alimentação"</strong> para rodar no Supabase ou clique em <strong>"Semear 25 Padrões"</strong>.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setSqlModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold text-xs transition"
+            >
+              Ver Script SQL
+            </button>
+            <button
+              onClick={handleSemearCatalogo}
+              disabled={isSeeding}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition"
+            >
+              Popular Agora
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Notifications */}
       {successMessage && (
@@ -618,6 +824,47 @@ export const CatalogoMateriaisView: React.FC = () => {
               >
                 <AlertOctagon className="w-4 h-4" />
                 <span>Sim, Excluir</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SQL Script Viewer Modal */}
+      {sqlModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <FileCode className="w-5 h-5 text-indigo-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Script SQL de Alimentação: tipo_material</h3>
+                  <p className="text-[11px] text-slate-400">Insere ou atualiza os 25 tipos de materiais padrão do 6º BPM</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCopySql}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                {copiedSql ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSql ? 'Copiado!' : 'Copiar SQL'}</span>
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-950 overflow-y-auto flex-1 font-mono text-[11px] text-emerald-400 leading-relaxed select-all">
+              <pre className="whitespace-pre-wrap">{SQL_TIPO_MATERIAL_SEED}</pre>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-500 text-[11px]">
+                Cole este comando no <strong>SQL Editor</strong> do seu painel Supabase e execute.
+              </span>
+              <button
+                type="button"
+                onClick={() => setSqlModalOpen(false)}
+                className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>

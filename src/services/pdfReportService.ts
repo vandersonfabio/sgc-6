@@ -14,7 +14,7 @@ export class PdfReportService {
     doc.text('ESTADO DO RIO GRANDE DO NORTE', pageWidth / 2, 12, { align: 'center' });
     doc.text('POLÍCIA MILITAR DO RIO GRANDE DO NORTE - PMRN', pageWidth / 2, 16.5, { align: 'center' });
     doc.text('COMANDO DE POLICIAMENTO REGIONAL II - CPR II', pageWidth / 2, 21, { align: 'center' });
-    doc.text('6º BATALHÃO DE POLÍCIA MILITAR - "BATALHÃO CEL. MOISÉS"', pageWidth / 2, 25.5, { align: 'center' });
+    doc.text('6º BATALHÃO DE POLÍCIA MILITAR', pageWidth / 2, 25.5, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
@@ -160,30 +160,168 @@ export class PdfReportService {
     doc.save(`Relatorio_Bélico_6BPM_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  // 2. Relatório de Viaturas Operacionais (Sem nº de série/tombo, com prefixo/placa/tipo/status)
+  // 2. Relatório de Viaturas Operacionais (Com Gráficos de Unidade, Condição e sem operador de alocação)
   public static gerarRelatorioViaturas(db: DatabaseEngine) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const { operador, policial } = db.getCurrentOperador();
     const opNome = `${policial.patente} ${policial.nome_guerra} (${operador.perfil_acesso})`;
+    const pageWidth = doc.internal.pageSize.getWidth();
 
     this.addHeader(
       doc,
       'RELATÓRIO OFICIAL DA FROTA DE VIATURAS',
-      `6º Batalhão de Polícia Militar • Caicó/RN • Estado Operacional da Frota`
+      `6º Batalhão de Polícia Militar • Caicó/RN • Distribuição por Unidade e Condição Operacional`
     );
 
     const itens = db.getItensComDetalhes('Viaturas');
     const alocacoes = db.getAlocacoesCompletas('Viaturas');
+    const totalFrota = itens.length;
+
+    // --- 1. Cálculo da Distribuição por Condição ---
+    const condicoes = [
+      { label: 'Disponível (Pronta p/ Serviço)', key: 'Disponível', cor: [16, 185, 129] as [number, number, number] },
+      { label: 'Alocado (Em Operação)', key: 'Alocado', cor: [79, 70, 229] as [number, number, number] },
+      { label: 'Manutenção (Oficina)', key: 'Manutenção', cor: [245, 158, 11] as [number, number, number] },
+      { label: 'Danificado / Avariado', key: 'Danificado / Avariado', cor: [225, 29, 72] as [number, number, number] },
+    ];
+
+    const condicoesData = condicoes.map((c) => {
+      const count = itens.filter((i) => i.status === c.key).length;
+      const pct = totalFrota > 0 ? ((count / totalFrota) * 100).toFixed(1) : '0.0';
+      return { ...c, count, pct };
+    });
+
+    // --- 2. Cálculo da Distribuição por Unidade ---
+    const unitMap: Record<string, { nome: string; count: number; condicoes: Record<string, number> }> = {};
+
+    // Sede
+    unitMap['sede'] = {
+      nome: 'Pátio 6º BPM (Sede - Caicó)',
+      count: 0,
+      condicoes: { Disponível: 0, Alocado: 0, Manutenção: 0, 'Danificado / Avariado': 0 },
+    };
+
+    itens.forEach((it) => {
+      const aloc = alocacoes.find(
+        (a) => a.itens.some((itAloc) => itAloc.id_item === it.id_item) && a.status === 'Ativa'
+      );
+
+      if (aloc) {
+        const uId = `unid_${aloc.unidade.id_unidade}`;
+        if (!unitMap[uId]) {
+          unitMap[uId] = {
+            nome: aloc.unidade.nome,
+            count: 0,
+            condicoes: { Disponível: 0, Alocado: 0, Manutenção: 0, 'Danificado / Avariado': 0 },
+          };
+        }
+        unitMap[uId].count += 1;
+        unitMap[uId].condicoes[it.status] = (unitMap[uId].condicoes[it.status] || 0) + 1;
+      } else {
+        unitMap['sede'].count += 1;
+        unitMap['sede'].condicoes[it.status] = (unitMap['sede'].condicoes[it.status] || 0) + 1;
+      }
+    });
+
+    const unidadesList = Object.values(unitMap).sort((a, b) => b.count - a.count);
+
+    // --- Desenhar Seção 1: Indicadores e Condição dos Veículos (Gráfico em Barras) ---
+    let currentY = 50;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, currentY, pageWidth - 28, 42, 2, 2, 'FD');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(30, 41, 59);
-    doc.text('MAPA DA FROTA VEICULAR:', 14, 52);
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('1. CONDIÇÃO OPERACIONAL DA FROTA (ESTADO DOS VEÍCULOS)', 18, currentY + 6);
+
+    let barY = currentY + 12;
+    condicoesData.forEach((c) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${c.label}:`, 18, barY + 3.5);
+
+      // Quantidade e percentual à direita
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${c.count} VTR (${c.pct}%)`, 105, barY + 3.5);
+
+      // Barra de fundo (cinza)
+      const barMaxWidth = 75;
+      const barX = 120;
+      doc.setFillColor(226, 232, 240);
+      doc.roundedRect(barX, barY, barMaxWidth, 4.5, 1, 1, 'F');
+
+      // Barra preenchida colorida
+      const filledWidth = totalFrota > 0 ? (c.count / totalFrota) * barMaxWidth : 0;
+      if (filledWidth > 0) {
+        doc.setFillColor(c.cor[0], c.cor[1], c.cor[2]);
+        doc.roundedRect(barX, barY, Math.max(filledWidth, 2), 4.5, 1, 1, 'F');
+      }
+
+      barY += 7;
+    });
+
+    currentY += 46;
+
+    // --- Desenhar Seção 2: Distribuição por Unidade / DPM (Gráfico em Barras) ---
+    const boxHeightUnidades = Math.min(62, 10 + unidadesList.length * 6.5);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, currentY, pageWidth - 28, boxHeightUnidades, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('2. QUANTITATIVO DE VIATURAS POR UNIDADE / DESTACAMENTO', 18, currentY + 6);
+
+    let uBarY = currentY + 12;
+    unidadesList.slice(0, 7).forEach((u) => {
+      const pct = totalFrota > 0 ? ((u.count / totalFrota) * 100).toFixed(1) : '0.0';
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(51, 65, 85);
+
+      const trimmedName = u.nome.length > 38 ? u.nome.substring(0, 36) + '...' : u.nome;
+      doc.text(trimmedName, 18, uBarY + 3.2);
+
+      // Quantidade
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${u.count} (${pct}%)`, 105, uBarY + 3.2);
+
+      // Barra de gráfico
+      const barMaxWidth = 75;
+      const barX = 120;
+      doc.setFillColor(226, 232, 240);
+      doc.roundedRect(barX, uBarY, barMaxWidth, 4, 1, 1, 'F');
+
+      const filledWidth = totalFrota > 0 ? (u.count / totalFrota) * barMaxWidth : 0;
+      if (filledWidth > 0) {
+        doc.setFillColor(79, 70, 229); // Índigo
+        doc.roundedRect(barX, uBarY, Math.max(filledWidth, 2), 4, 1, 1, 'F');
+      }
+
+      uBarY += 6.5;
+    });
+
+    currentY += boxHeightUnidades + 4;
+
+    // --- Seção 3: Tabela Detalhada com os Veículos ---
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('3. INVENTÁRIO NOMINATIVO DA FROTA VEICULAR', 14, currentY);
 
     const tableRows = itens.map((it) => {
       const vtr = it.detalhe_viatura;
-      const aloc = alocacoes.find((a) => a.itens.some((itAloc) => itAloc.id_item === it.id_item) && a.status === 'Ativa');
-      const destino = aloc ? `${aloc.unidade.sigla || aloc.unidade.nome} (${aloc.operador.policial.nome_guerra})` : 'Pátio 6º BPM (Sede)';
+      const aloc = alocacoes.find(
+        (a) => a.itens.some((itAloc) => itAloc.id_item === it.id_item) && a.status === 'Ativa'
+      );
+      
+      // Conforme solicitado: Não precisa mostrar no relatório o usuário que fez a alocação
+      const destino = aloc ? aloc.unidade.nome : 'Pátio 6º BPM (Sede)';
 
       return [
         vtr?.prefixo || 'VTR-0600',
@@ -196,14 +334,14 @@ export class PdfReportService {
     });
 
     autoTable(doc, {
-      startY: 56,
-      head: [['Prefixo', 'Placa Oficial', 'Tipo do Veículo', 'Marca / Modelo', 'Status', 'Lotação / Emprego']],
+      startY: currentY + 3,
+      head: [['Prefixo', 'Placa Oficial', 'Tipo do Veículo', 'Marca / Modelo', 'Condição / Status', 'Lotação / Emprego']],
       body: tableRows,
       theme: 'grid',
-      headStyles: { fillColor: [217, 119, 6], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      headStyles: { fillColor: [217, 119, 6], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
       alternateRowStyles: { fillColor: [255, 251, 235] },
-      styles: { cellPadding: 2 },
+      styles: { cellPadding: 1.8 },
       margin: { left: 14, right: 14 },
     });
 
@@ -322,7 +460,7 @@ export class PdfReportService {
     this.addHeader(
       doc,
       'RELAÇÃO GERAL DO EFETIVO POLICIAL MILITAR',
-      '6º Batalhão de Polícia Militar - "Batalhão Cel. Moisés" • Caicó/RN'
+      '6º Batalhão de Polícia Militar - Caicó/RN'
     );
 
     const policiais = db.getPoliciais();
@@ -366,7 +504,7 @@ export class PdfReportService {
     this.addHeader(
       doc,
       'ESTRUTURA ORGANIZACIONAL, COMPANHIAS E DESTACAMENTOS',
-      '6º Batalhão de Polícia Militar - "Batalhão Cel. Moisés" • Caicó/RN'
+      '6º Batalhão de Polícia Militar - Caicó/RN'
     );
 
     const unidades = db.getUnidades();

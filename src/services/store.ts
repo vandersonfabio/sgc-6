@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   ModuloTipo,
   PerfilAcesso,
+  StatusItem,
   Unidade,
   Policial,
   OperadorSistema,
@@ -61,6 +62,7 @@ import {
   finalizarCautelaInSupabase,
   pushAlocacaoToSupabase,
   finalizarAlocacaoInSupabase,
+  removerItemDeAlocacaoInSupabase,
   pushExtravioToSupabase,
   pushDisparoToSupabase,
   pushAuditoriaToSupabase,
@@ -69,6 +71,7 @@ import {
   pushUnidadeToSupabase,
   deleteUnidadeFromSupabase,
   pushTipoMaterialToSupabase,
+  deleteTipoMaterialFromSupabase,
   pushAllDataToSupabase,
   pullAllDataFromSupabase,
   initSupabaseRealtime,
@@ -152,17 +155,6 @@ export class DatabaseEngine {
       save('operadores', this.operadores);
     }
     this.tiposMateriais = loadOrSeed('tipos_materiais', SEED_TIPOS_MATERIAIS);
-    // Ensure all canonical seed material types exist
-    let tiposChanged = false;
-    for (const seedTipo of SEED_TIPOS_MATERIAIS) {
-      if (!this.tiposMateriais.some((t) => t.id_tipo_material === seedTipo.id_tipo_material)) {
-        this.tiposMateriais.push(seedTipo);
-        tiposChanged = true;
-      }
-    }
-    if (tiposChanged) {
-      save('tipos_materiais', this.tiposMateriais);
-    }
     this.itens = loadOrSeed('itens', SEED_ITENS_PATRIMONIO);
     this.detalheArma = loadOrSeed('detalhe_arma', SEED_DETALHE_ARMA);
     this.detalheColete = loadOrSeed('detalhe_colete', SEED_DETALHE_COLETE);
@@ -346,7 +338,7 @@ export class DatabaseEngine {
       if (res.data.unidades && res.data.unidades.length > 0) this.unidades = res.data.unidades;
       if (res.data.policiais && res.data.policiais.length > 0) this.policiais = res.data.policiais;
       if (res.data.operadores && res.data.operadores.length > 0) this.operadores = res.data.operadores;
-      if (res.data.tiposMateriais && res.data.tiposMateriais.length > 0) this.tiposMateriais = res.data.tiposMateriais;
+      if (res.data.tiposMateriais !== undefined) this.tiposMateriais = res.data.tiposMateriais;
       this.itens = res.data.itens || [];
       this.detalheArma = res.data.detalheArma || [];
       this.detalheColete = res.data.detalheColete || [];
@@ -384,7 +376,7 @@ export class DatabaseEngine {
         if (res.data.unidades && res.data.unidades.length > 0) this.unidades = res.data.unidades;
         if (res.data.policiais && res.data.policiais.length > 0) this.policiais = res.data.policiais;
         if (res.data.operadores && res.data.operadores.length > 0) this.operadores = res.data.operadores;
-        if (res.data.tiposMateriais && res.data.tiposMateriais.length > 0) this.tiposMateriais = res.data.tiposMateriais;
+        if (res.data.tiposMateriais !== undefined) this.tiposMateriais = res.data.tiposMateriais;
         this.itens = res.data.itens || [];
         this.detalheArma = res.data.detalheArma || [];
         this.detalheColete = res.data.detalheColete || [];
@@ -795,23 +787,38 @@ export class DatabaseEngine {
         }
       }
 
-      // Check current active alocação
+      // Check current active alocação (picking the latest active allocation)
       let alocacao_atual: ItemComDetalhes['alocacao_atual'] = undefined;
-      const activeAlocLink = this.alocacaoItens.find((ai) => {
-        if (ai.id_item !== item.id_item) return false;
-        const aloc = this.alocacoes.find((a) => a.id_alocacao === ai.id_alocacao);
-        return aloc && aloc.status === 'Ativa';
-      });
+      const itemAlocLinks = this.alocacaoItens.filter((ai) => ai.id_item === item.id_item);
+      const activeAlocs = itemAlocLinks
+        .map((ai) => this.alocacoes.find((a) => a.id_alocacao === ai.id_alocacao))
+        .filter((a): a is AlocacaoUnidade => !!a && a.status === 'Ativa');
 
-      if (activeAlocLink) {
-        const aloc = this.alocacoes.find((a) => a.id_alocacao === activeAlocLink.id_alocacao);
-        const unid = aloc ? this.unidades.find((u) => u.id_unidade === aloc.id_unidade) : null;
-        if (aloc && unid) {
-          alocacao_atual = {
-            id_alocacao: aloc.id_alocacao,
-            unidade_nome: unid.nome,
-            data_alocacao: aloc.data_alocacao,
-          };
+      if (activeAlocs.length > 0) {
+        // Sort descending: latest data_alocacao / highest id_alocacao first
+        activeAlocs.sort((a, b) => {
+          const timeA = a.data_alocacao ? new Date(a.data_alocacao).getTime() : 0;
+          const timeB = b.data_alocacao ? new Date(b.data_alocacao).getTime() : 0;
+          if (timeB !== timeA) return timeB - timeA;
+          return (b.id_alocacao || 0) - (a.id_alocacao || 0);
+        });
+
+        const latestAloc = activeAlocs[0];
+        const unid = this.unidades.find((u) => u.id_unidade === latestAloc.id_unidade);
+
+        if (unid) {
+          // If item is 'Disponível' and the active allocation is for an external DPM/CPM,
+          // the item has returned to the Sede and the old remote allocation is stale.
+          if (item.status === 'Disponível' && latestAloc.id_unidade !== 1 && unid.tipo_unidade !== 'Sede') {
+            alocacao_atual = undefined;
+          } else {
+            alocacao_atual = {
+              id_alocacao: latestAloc.id_alocacao,
+              id_unidade: latestAloc.id_unidade,
+              unidade_nome: unid.nome,
+              data_alocacao: latestAloc.data_alocacao,
+            };
+          }
         }
       }
 
@@ -1351,6 +1358,165 @@ export class DatabaseEngine {
     }
   }
 
+  // 4.1. Devolução Individual de Item de Alocação (Retornar Viatura/Item para a Sede)
+  public devolverItemAlocacao(
+    id_item: number,
+    novoStatus: StatusItem = 'Disponível',
+    motivo?: string
+  ): { success: boolean; error?: string } {
+    try {
+      const activeLinks = this.alocacaoItens.filter((ai) => {
+        if (ai.id_item !== id_item) return false;
+        const aloc = this.alocacoes.find((a) => a.id_alocacao === ai.id_alocacao);
+        return aloc && aloc.status === 'Ativa';
+      });
+
+      if (activeLinks.length === 0) {
+        // Even if not linked in active alocacao, update item status if requested
+        const it = this.itens.find((i) => i.id_item === id_item);
+        if (it) {
+          it.status = novoStatus;
+          if (motivo) {
+            it.observacao = it.observacao ? `${it.observacao} [${motivo}]` : motivo;
+          }
+          this.persistAll();
+          this.notify();
+          const arma = this.detalheArma.find((d) => d.id_item === id_item);
+          const colete = this.detalheColete.find((d) => d.id_item === id_item);
+          const impo = this.detalheImpo.find((d) => d.id_item === id_item);
+          const comunicacao = this.detalheComunicacao.find((d) => d.id_item === id_item);
+          const viatura = this.detalheViatura.find((d) => d.id_item === id_item);
+          const informatica = this.detalheInformatica.find((d) => d.id_item === id_item);
+          pushItemToSupabase(it, { arma, colete, impo, comunicacao, viatura, informatica }).catch(() => {});
+        }
+        return { success: true };
+      }
+
+      for (const activeLink of activeLinks) {
+        const id_alocacao = activeLink.id_alocacao;
+        const aloc = this.alocacoes.find((a) => a.id_alocacao === id_alocacao);
+
+        // Remove the link
+        this.alocacaoItens = this.alocacaoItens.filter(
+          (ai) => !(ai.id_alocacao === id_alocacao && ai.id_item === id_item)
+        );
+
+        // Check if there are other items in this allocation
+        const remainingItems = this.alocacaoItens.filter((ai) => ai.id_alocacao === id_alocacao);
+        const isLastItem = remainingItems.length === 0;
+
+        if (isLastItem && aloc) {
+          aloc.status = 'Devolvida';
+          aloc.data_devolucao_efetiva = new Date().toISOString();
+        }
+
+        removerItemDeAlocacaoInSupabase(id_alocacao, id_item, isLastItem, novoStatus).catch((e) =>
+          console.warn('Supabase individual item return error:', e)
+        );
+
+        this.registrarAuditoria('DEVOLUCAO_ITEM_ALOCACAO', 'alocacao_unidade', {
+          id_alocacao,
+          id_item,
+          novoStatus,
+          isLastItem,
+          motivo,
+        });
+      }
+
+      // Update item status
+      const it = this.itens.find((i) => i.id_item === id_item);
+      if (it) {
+        it.status = novoStatus;
+        if (motivo) {
+          it.observacao = it.observacao ? `${it.observacao} [Retorno Sede: ${motivo}]` : `[Retorno Sede: ${motivo}]`;
+        }
+        const arma = this.detalheArma.find((d) => d.id_item === id_item);
+        const colete = this.detalheColete.find((d) => d.id_item === id_item);
+        const impo = this.detalheImpo.find((d) => d.id_item === id_item);
+        const comunicacao = this.detalheComunicacao.find((d) => d.id_item === id_item);
+        const viatura = this.detalheViatura.find((d) => d.id_item === id_item);
+        const informatica = this.detalheInformatica.find((d) => d.id_item === id_item);
+        pushItemToSupabase(it, { arma, colete, impo, comunicacao, viatura, informatica }).catch(() => {});
+      }
+
+      this.persistAll();
+      this.notify();
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro ao devolver item de alocação' };
+    }
+  }
+
+  // 4.2. Realocar Item / Viatura Individualmente (Direto para outra unidade ou de volta à sede)
+  public realocarItem(params: {
+    id_item: number;
+    id_unidade_destino?: number | null;
+    novoStatus?: StatusItem;
+    motivo?: string;
+  }): { success: boolean; id_alocacao?: number; error?: string } {
+    try {
+      const it = this.itens.find((i) => i.id_item === params.id_item);
+      if (!it) return { success: false, error: 'Item patrimonial não encontrado' };
+
+      // Case 1: Returning to Sede (Caicó / Pátio Geral)
+      if (!params.id_unidade_destino || params.id_unidade_destino === 0) {
+        return this.devolverItemAlocacao(params.id_item, params.novoStatus || 'Disponível', params.motivo);
+      }
+
+      // Case 2: Transferring to another Unidade (CPM / DPM)
+      // Step A: remove from ALL existing active allocations if present
+      const activeLinks = this.alocacaoItens.filter((ai) => {
+        if (ai.id_item === params.id_item) {
+          const a = this.alocacoes.find((al) => al.id_alocacao === ai.id_alocacao);
+          return a && a.status === 'Ativa';
+        }
+        return false;
+      });
+
+      for (const activeLink of activeLinks) {
+        const oldAlocId = activeLink.id_alocacao;
+        this.alocacaoItens = this.alocacaoItens.filter(
+          (ai) => !(ai.id_alocacao === oldAlocId && ai.id_item === params.id_item)
+        );
+        const remaining = this.alocacaoItens.filter((ai) => ai.id_alocacao === oldAlocId);
+        if (remaining.length === 0) {
+          const oldAloc = this.alocacoes.find((a) => a.id_alocacao === oldAlocId);
+          if (oldAloc) {
+            oldAloc.status = 'Devolvida';
+            oldAloc.data_devolucao_efetiva = new Date().toISOString();
+          }
+        }
+        removerItemDeAlocacaoInSupabase(oldAlocId, params.id_item, remaining.length === 0, 'Disponível').catch(() => {});
+      }
+
+      // Step B: Set item as 'Disponível' temporarily to pass createAlocacao validation
+      it.status = 'Disponível';
+      if (params.motivo) {
+        it.observacao = it.observacao ? `${it.observacao} [Remanejado: ${params.motivo}]` : `[Remanejado: ${params.motivo}]`;
+      }
+
+      // Step C: Create new allocation for destination
+      const res = this.createAlocacao({
+        id_unidade: params.id_unidade_destino,
+        itensIds: [params.id_item],
+      });
+
+      if (res.success) {
+        this.registrarAuditoria('REALOCACAO_ITEM_UNIDADE', 'alocacao_unidade', {
+          id_item: params.id_item,
+          id_unidade_destino: params.id_unidade_destino,
+          id_alocacao_nova: res.id_alocacao,
+          motivo: params.motivo,
+        });
+      }
+
+      return res;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro ao realocar item para unidade' };
+    }
+  }
+
   // 5. CRUD Itens & Detalhes
   public cadastrarTipoMaterial(
     tipo: Partial<TipoMaterial> & { modulo: ModuloTipo; nome: string; modo_controle: ModoControleMaterial }
@@ -1435,6 +1601,11 @@ export class DatabaseEngine {
         novo: this.tiposMateriais[idx],
       });
 
+      // Async sync with Supabase if connected
+      pushTipoMaterialToSupabase(this.tiposMateriais[idx]).catch((e) =>
+        console.warn('[Supabase] Erro ao sincronizar tipo_material atualizado:', e)
+      );
+
       this.persistAll();
       this.notify();
       return { success: true };
@@ -1474,11 +1645,51 @@ export class DatabaseEngine {
         modulo: tipo.modulo,
       });
 
+      // Async sync delete with Supabase
+      deleteTipoMaterialFromSupabase(id_tipo_material).catch((e) =>
+        console.warn('[Supabase] Erro ao excluir tipo_material remoto:', e)
+      );
+
       this.persistAll();
       this.notify();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Erro ao excluir tipo de material' };
+    }
+  }
+
+  /**
+   * Semeia / Restaura o catálogo padrão canônico (25 tipos) localmente e no Supabase.
+   */
+  public async semearCatalogoPadrao(): Promise<{ success: boolean; count: number; error?: string }> {
+    try {
+      let count = 0;
+      for (const seed of SEED_TIPOS_MATERIAIS) {
+        const exists = this.tiposMateriais.some(
+          (t) => t.id_tipo_material === seed.id_tipo_material || t.nome.toLowerCase() === seed.nome.toLowerCase()
+        );
+        if (!exists) {
+          this.tiposMateriais.push({ ...seed });
+          count++;
+          // Push to Supabase if connected
+          pushTipoMaterialToSupabase(seed).catch((e) =>
+            console.warn('[Supabase] Erro ao inserir tipo_material semente:', e)
+          );
+        }
+      }
+
+      if (count > 0) {
+        this.registrarAuditoria('SEMEADURA_CATALOGO', 'tipos_materiais', {
+          quantidade_inserida: count,
+          total_apos_semeadura: this.tiposMateriais.length,
+        });
+        this.persistAll();
+        this.notify();
+      }
+
+      return { success: true, count };
+    } catch (err: any) {
+      return { success: false, count: 0, error: err.message || 'Erro ao semear catálogo' };
     }
   }
 
@@ -1536,6 +1747,38 @@ export class DatabaseEngine {
         );
         if (dupTombo) {
           return { success: false, error: `Já existe um item cadastrado com o número de tombo "${itemFinal.numero_tombo}".` };
+        }
+      }
+
+      // Check viatura placa and prefixo uniqueness if present
+      if (detalhes?.viatura?.placa && detalhes.viatura.placa.trim()) {
+        const targetPlaca = detalhes.viatura.placa.trim().toUpperCase();
+        const dupPlaca = this.detalheViatura.find(
+          (v) => (v.placa || '').trim().toUpperCase() === targetPlaca
+        );
+        if (dupPlaca) {
+          return { success: false, error: `Já existe uma viatura cadastrada com a placa oficial "${targetPlaca}".` };
+        }
+      }
+
+      if (detalhes?.viatura?.prefixo && detalhes.viatura.prefixo.trim()) {
+        const targetPrefixo = detalhes.viatura.prefixo.trim().toUpperCase();
+        const dupPrefixo = this.detalheViatura.find(
+          (v) => (v.prefixo || '').trim().toUpperCase() === targetPrefixo
+        );
+        if (dupPrefixo) {
+          return { success: false, error: `Já existe uma viatura cadastrada com o prefixo "${targetPrefixo}".` };
+        }
+      }
+
+      // Check imei_mac uniqueness if present
+      if (detalhes?.comunicacao?.imei_mac && detalhes.comunicacao.imei_mac.trim()) {
+        const targetImei = detalhes.comunicacao.imei_mac.trim().toLowerCase();
+        const dupImei = this.detalheComunicacao.find(
+          (c) => (c.imei_mac || '').trim().toLowerCase() === targetImei
+        );
+        if (dupImei) {
+          return { success: false, error: `Já existe um equipamento de comunicação com o IMEI/MAC "${detalhes.comunicacao.imei_mac}".` };
         }
       }
 
@@ -1786,6 +2029,60 @@ export class DatabaseEngine {
       const itemIdx = this.itens.findIndex((i) => i.id_item === id_item);
       if (itemIdx === -1) {
         return { success: false, error: 'Item patrimonial não encontrado' };
+      }
+
+      // Check serial number uniqueness if changed
+      if (itemDados.numero_serie && itemDados.numero_serie.trim()) {
+        const targetSerie = itemDados.numero_serie.trim().toLowerCase();
+        const dupSerie = this.itens.find(
+          (i) => i.id_item !== id_item && i.numero_serie && i.numero_serie.trim().toLowerCase() === targetSerie
+        );
+        if (dupSerie) {
+          return { success: false, error: `Já existe outro item cadastrado com o número de série "${itemDados.numero_serie}".` };
+        }
+      }
+
+      // Check tombo uniqueness if changed
+      if (itemDados.numero_tombo && itemDados.numero_tombo.trim()) {
+        const targetTombo = itemDados.numero_tombo.trim().toLowerCase();
+        const dupTombo = this.itens.find(
+          (i) => i.id_item !== id_item && i.numero_tombo && i.numero_tombo.trim().toLowerCase() === targetTombo
+        );
+        if (dupTombo) {
+          return { success: false, error: `Já existe outro item cadastrado com o número de tombo "${itemDados.numero_tombo}".` };
+        }
+      }
+
+      // Check viatura placa and prefixo uniqueness against other items
+      if (detalhes?.viatura?.placa && detalhes.viatura.placa.trim()) {
+        const targetPlaca = detalhes.viatura.placa.trim().toUpperCase();
+        const dupPlaca = this.detalheViatura.find(
+          (v) => v.id_item !== id_item && (v.placa || '').trim().toUpperCase() === targetPlaca
+        );
+        if (dupPlaca) {
+          return { success: false, error: `Já existe outra viatura cadastrada com a placa oficial "${targetPlaca}".` };
+        }
+      }
+
+      if (detalhes?.viatura?.prefixo && detalhes.viatura.prefixo.trim()) {
+        const targetPrefixo = detalhes.viatura.prefixo.trim().toUpperCase();
+        const dupPrefixo = this.detalheViatura.find(
+          (v) => v.id_item !== id_item && (v.prefixo || '').trim().toUpperCase() === targetPrefixo
+        );
+        if (dupPrefixo) {
+          return { success: false, error: `Já existe outra viatura cadastrada com o prefixo "${targetPrefixo}".` };
+        }
+      }
+
+      // Check imei_mac uniqueness against other items
+      if (detalhes?.comunicacao?.imei_mac && detalhes.comunicacao.imei_mac.trim()) {
+        const targetImei = detalhes.comunicacao.imei_mac.trim().toLowerCase();
+        const dupImei = this.detalheComunicacao.find(
+          (c) => c.id_item !== id_item && (c.imei_mac || '').trim().toLowerCase() === targetImei
+        );
+        if (dupImei) {
+          return { success: false, error: `Já existe outro equipamento com o IMEI/MAC "${detalhes.comunicacao.imei_mac}".` };
+        }
       }
 
       this.itens[itemIdx] = {

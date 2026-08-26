@@ -141,10 +141,51 @@ export async function pushItemToSupabase(
       return { success: false, error: msg };
     }
 
-    // 2. Check if item already exists in Supabase by natural unique keys (numero_serie or numero_tombo)
+    // 2. Check if item already exists in Supabase by natural unique keys (placa, prefixo, imei_mac, numero_serie, numero_tombo, or ID)
     let existingDbId: number | null = null;
 
-    if (item.numero_serie && item.numero_serie.trim()) {
+    // 2.a If item has an explicit ID in Supabase
+    if (item.id_item && Number(item.id_item) > 0) {
+      const { data: existingById } = await client
+        .from('item_patrimonio')
+        .select('id_item')
+        .eq('id_item', item.id_item)
+        .maybeSingle();
+
+      if (existingById?.id_item) {
+        existingDbId = Number(existingById.id_item);
+      }
+    }
+
+    // 2.b If Viatura: check by placa or prefixo in detalhe_viatura
+    if (!existingDbId && detalhes?.viatura?.placa && detalhes.viatura.placa.trim()) {
+      const cleanPlaca = detalhes.viatura.placa.trim().toUpperCase();
+      const { data: existingByPlaca } = await client
+        .from('detalhe_viatura')
+        .select('id_item')
+        .ilike('placa', cleanPlaca)
+        .maybeSingle();
+
+      if (existingByPlaca?.id_item) {
+        existingDbId = Number(existingByPlaca.id_item);
+      }
+    }
+
+    if (!existingDbId && detalhes?.viatura?.prefixo && detalhes.viatura.prefixo.trim()) {
+      const cleanPrefixo = detalhes.viatura.prefixo.trim().toUpperCase();
+      const { data: existingByPrefixo } = await client
+        .from('detalhe_viatura')
+        .select('id_item')
+        .ilike('prefixo', cleanPrefixo)
+        .maybeSingle();
+
+      if (existingByPrefixo?.id_item) {
+        existingDbId = Number(existingByPrefixo.id_item);
+      }
+    }
+
+    // 2.c Check by numero_serie
+    if (!existingDbId && item.numero_serie && item.numero_serie.trim()) {
       const { data: existingBySerie } = await client
         .from('item_patrimonio')
         .select('id_item')
@@ -156,6 +197,7 @@ export async function pushItemToSupabase(
       }
     }
 
+    // 2.d Check by numero_tombo
     if (!existingDbId && item.numero_tombo && item.numero_tombo.trim()) {
       const { data: existingByTombo } = await client
         .from('item_patrimonio')
@@ -168,7 +210,20 @@ export async function pushItemToSupabase(
       }
     }
 
-    let definitiveId: number;
+    // 2.e Check by imei_mac (Comunicação)
+    if (!existingDbId && detalhes?.comunicacao?.imei_mac && detalhes.comunicacao.imei_mac.trim()) {
+      const { data: existingByImei } = await client
+        .from('detalhe_comunicacao')
+        .select('id_item')
+        .eq('imei_mac', detalhes.comunicacao.imei_mac.trim())
+        .maybeSingle();
+
+      if (existingByImei?.id_item) {
+        existingDbId = Number(existingByImei.id_item);
+      }
+    }
+
+    let definitiveId: number = 0;
 
     const basePayload = {
       id_tipo_material: resolvedTipoId || null,
@@ -211,23 +266,42 @@ export async function pushItemToSupabase(
         .single();
 
       if (insertErr) {
-        console.error('[Supabase] Falha ao inserir item_patrimonio:', insertErr);
-        return {
-          success: false,
-          error: `Falha ao inserir item no Supabase: ${insertErr.message}`,
-          code: insertErr.code,
-          details: insertErr.details,
-          hint: insertErr.hint,
-        };
-      }
+        // If duplicate key (23505) occurred on insertion (e.g. numero_serie or numero_tombo collision)
+        if (insertErr.code === '23505') {
+          let retryId: number | null = null;
+          if (item.numero_serie && item.numero_serie.trim()) {
+            const { data: rSerie } = await client.from('item_patrimonio').select('id_item').eq('numero_serie', item.numero_serie.trim()).maybeSingle();
+            if (rSerie?.id_item) retryId = Number(rSerie.id_item);
+          }
+          if (!retryId && item.numero_tombo && item.numero_tombo.trim()) {
+            const { data: rTombo } = await client.from('item_patrimonio').select('id_item').eq('numero_tombo', item.numero_tombo.trim()).maybeSingle();
+            if (rTombo?.id_item) retryId = Number(rTombo.id_item);
+          }
+          if (retryId) {
+            const { data: updatedRetry } = await client.from('item_patrimonio').update(basePayload).eq('id_item', retryId).select().single();
+            if (updatedRetry?.id_item) {
+              definitiveId = Number(updatedRetry.id_item);
+            }
+          }
+        }
 
-      if (!insertedItem?.id_item) {
+        if (!definitiveId) {
+          console.error('[Supabase] Falha ao inserir item_patrimonio:', insertErr);
+          return {
+            success: false,
+            error: `Falha ao inserir item no Supabase: ${insertErr.message}`,
+            code: insertErr.code,
+            details: insertErr.details,
+            hint: insertErr.hint,
+          };
+        }
+      } else if (!insertedItem?.id_item) {
         const msg = 'PostgreSQL não retornou o id_item gerado após a inserção.';
         console.error('[Supabase] Erro de retorno:', msg);
         return { success: false, error: msg };
+      } else {
+        definitiveId = Number(insertedItem.id_item);
       }
-
-      definitiveId = Number(insertedItem.id_item);
     }
 
     // 3. Upsert specialized details using the DEFINITIVE id_item
@@ -281,32 +355,121 @@ export async function pushItemToSupabase(
     }
 
     if (detalhes?.comunicacao) {
-      const { error: comErr } = await client.from('detalhe_comunicacao').upsert({
+      const comPayload = {
         id_item: definitiveId,
-        imei_mac: detalhes.comunicacao.imei_mac || null,
-        numero_linha: detalhes.comunicacao.numero_linha || null,
-      }, { onConflict: 'id_item' });
+        imei_mac: detalhes.comunicacao.imei_mac?.trim() || null,
+        numero_linha: detalhes.comunicacao.numero_linha?.trim() || null,
+      };
 
-      if (comErr) {
-        console.error('[Supabase] Falha ao persistir detalhe_comunicacao:', comErr);
-        return { success: false, error: `Falha ao persistir equipamento de comunicação: ${comErr.message}` };
+      const { data: existingComById } = await client
+        .from('detalhe_comunicacao')
+        .select('id_item')
+        .eq('id_item', definitiveId)
+        .maybeSingle();
+
+      if (existingComById) {
+        const { error: comErr } = await client
+          .from('detalhe_comunicacao')
+          .update(comPayload)
+          .eq('id_item', definitiveId);
+        if (comErr) {
+          console.error('[Supabase] Falha ao atualizar detalhe_comunicacao:', comErr);
+          return { success: false, error: `Falha ao atualizar equipamento de comunicação: ${comErr.message}` };
+        }
+      } else {
+        const { error: comErr } = await client
+          .from('detalhe_comunicacao')
+          .insert(comPayload);
+
+        if (comErr) {
+          if (comErr.code === '23505' && comPayload.imei_mac) {
+            await client
+              .from('detalhe_comunicacao')
+              .update({ numero_linha: comPayload.numero_linha })
+              .eq('imei_mac', comPayload.imei_mac);
+          } else {
+            console.error('[Supabase] Falha ao persistir detalhe_comunicacao:', comErr);
+            return { success: false, error: `Falha ao persistir equipamento de comunicação: ${comErr.message}` };
+          }
+        }
       }
     }
 
     if (detalhes?.viatura) {
       const safePlaca = (detalhes.viatura.placa || `PMR-${definitiveId}`).trim().toUpperCase();
       const safePrefixo = (detalhes.viatura.prefixo?.trim() || `VTR-${safePlaca.replace(/[^a-zA-Z0-9]/g, '')}`).toUpperCase();
-      const { error: vtrErr } = await client.from('detalhe_viatura').upsert({
+      const vtrPayload = {
         id_item: definitiveId,
         placa: safePlaca,
         prefixo: safePrefixo,
         renavam: detalhes.viatura.renavam?.trim() || null,
         chassi: detalhes.viatura.chassi?.trim() || null,
-      }, { onConflict: 'id_item' });
+      };
 
-      if (vtrErr) {
-        console.error('[Supabase] Falha ao persistir detalhe_viatura:', vtrErr);
-        return { success: false, error: `Falha ao persistir viatura: ${vtrErr.message}` };
+      // 1. Check if record exists for this item
+      const { data: existingVtrById } = await client
+        .from('detalhe_viatura')
+        .select('id_item')
+        .eq('id_item', definitiveId)
+        .maybeSingle();
+
+      // 2. Check if a record exists with this placa
+      const { data: existingVtrByPlaca } = await client
+        .from('detalhe_viatura')
+        .select('id_item, placa')
+        .ilike('placa', safePlaca)
+        .maybeSingle();
+
+      if (existingVtrByPlaca && Number(existingVtrByPlaca.id_item) !== definitiveId) {
+        // Row already exists with this placa under a different ID: update that row
+        const { error: updErr } = await client
+          .from('detalhe_viatura')
+          .update({
+            prefixo: safePrefixo,
+            renavam: vtrPayload.renavam,
+            chassi: vtrPayload.chassi,
+          })
+          .eq('id_item', existingVtrByPlaca.id_item);
+
+        if (updErr) {
+          console.warn('[Supabase] Falha ao atualizar viatura existente por placa:', updErr);
+        }
+      } else if (existingVtrById) {
+        const { error: updErr } = await client
+          .from('detalhe_viatura')
+          .update(vtrPayload)
+          .eq('id_item', definitiveId);
+
+        if (updErr) {
+          console.error('[Supabase] Falha ao atualizar detalhe_viatura:', updErr);
+          return { success: false, error: `Falha ao atualizar viatura: ${updErr.message}` };
+        }
+      } else {
+        const { error: insErr } = await client
+          .from('detalhe_viatura')
+          .insert(vtrPayload);
+
+        if (insErr) {
+          if (insErr.code === '23505') {
+            // Duplicate key on placa or prefixo - update matching row
+            const { error: updByPlacaErr } = await client
+              .from('detalhe_viatura')
+              .update({
+                prefixo: safePrefixo,
+                renavam: vtrPayload.renavam,
+                chassi: vtrPayload.chassi,
+              })
+              .ilike('placa', safePlaca);
+
+            if (updByPlacaErr) {
+              console.error('[Supabase] Falha no retry de detalhe_viatura:', updByPlacaErr);
+              return { success: false, error: `Falha ao persistir viatura: ${insErr.message}` };
+            }
+          } else {
+            console.error('[Supabase] Falha ao persistir detalhe_viatura:', insErr);
+            return { success: false, error: `Falha ao persistir viatura: ${insErr.message}` };
+          }
+        }
       }
     }
 
@@ -813,6 +976,29 @@ export async function pushTipoMaterialToSupabase(tipo: TipoMaterial): Promise<Sy
     };
   } catch (err: any) {
     console.error('[Supabase] Exceção ao persistir tipo_material:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteTipoMaterialFromSupabase(
+  id_tipo_material: number
+): Promise<SyncOperationResult<null>> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  try {
+    const { error } = await client
+      .from('tipo_material')
+      .delete()
+      .eq('id_tipo_material', id_tipo_material);
+
+    if (error) {
+      console.error('[Supabase] Erro ao excluir tipo_material:', error);
+      return { success: false, error: error.message, code: error.code };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase] Exceção ao excluir tipo_material:', err);
     return { success: false, error: err.message };
   }
 }
@@ -1417,6 +1603,50 @@ export async function finalizarAlocacaoInSupabase(
     return { success: true };
   } catch (err: any) {
     console.error('[Supabase] Exceção ao finalizar alocação:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Removes or returns an individual item from an active allocation in Supabase.
+ */
+export async function removerItemDeAlocacaoInSupabase(
+  id_alocacao: number,
+  id_item: number,
+  isLastItemInAlocacao: boolean,
+  novoStatusItem: string = 'Disponível'
+): Promise<SyncOperationResult> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  try {
+    // Delete link from alocacao_item
+    await client
+      .from('alocacao_item')
+      .delete()
+      .eq('id_alocacao', id_alocacao)
+      .eq('id_item', id_item);
+
+    // If it was the last item in this allocation, finalize the allocation
+    if (isLastItemInAlocacao) {
+      await client
+        .from('alocacao_unidade')
+        .update({
+          status: 'Devolvida',
+          data_devolucao_efetiva: new Date().toISOString(),
+        })
+        .eq('id_alocacao', id_alocacao);
+    }
+
+    // Update item status in item_patrimonio
+    await client
+      .from('item_patrimonio')
+      .update({ status: novoStatusItem })
+      .eq('id_item', id_item);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase] Exceção ao remover item de alocação:', err);
     return { success: false, error: err.message };
   }
 }
@@ -2188,6 +2418,37 @@ export async function pushAllDataToSupabase(data: {
       processed: cautelasProcessed,
       errors: cautelasErrors,
       message: `${cautelasProcessed} cautelas operacionais sincronizadas`,
+    });
+
+    // 8. ALOCAÇÕES DE UNIDADE
+    let alocProcessed = 0;
+    let alocErrors = 0;
+    for (const a of data.alocacoes) {
+      const dbUnidadeId = mapUnidadeId.get(a.id_unidade) || a.id_unidade;
+      const linkedItens = data.alocacaoItens
+        .filter((ai) => ai.id_alocacao === a.id_alocacao)
+        .map((ai) => ({
+          ...ai,
+          id_item: mapItemId.get(ai.id_item) || ai.id_item,
+        }));
+
+      const res = await pushAlocacaoToSupabase(
+        { ...a, id_unidade: dbUnidadeId },
+        linkedItens
+      );
+
+      if (res.success) {
+        alocProcessed++;
+      } else {
+        alocErrors++;
+      }
+    }
+    results.push({
+      entity: 'alocacao_unidade',
+      success: alocErrors === 0,
+      processed: alocProcessed,
+      errors: alocErrors,
+      message: `${alocProcessed} alocações de unidade sincronizadas`,
     });
 
     const totalErrors = results.reduce((acc, r) => acc + r.errors, 0);
