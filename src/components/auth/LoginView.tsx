@@ -146,13 +146,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     type="text"
                     value={identificador}
                     onChange={(e) => setIdentificador(e.target.value)}
-                    placeholder="E-mail (@pm.rn.gov.br) ou Matrícula PM"
+                    placeholder="Matrícula PM"
                     required
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 pl-1">
-                  Ex: <code>vanderson.fabio@pm.rn.gov.br</code> ou <code>PM-198420-1</code>
+                  Ex: <code>1984201</code>
                 </p>
               </div>
 

@@ -63,6 +63,8 @@ import {
   pushAlocacaoToSupabase,
   finalizarAlocacaoInSupabase,
   removerItemDeAlocacaoInSupabase,
+  realocarItemInSupabase,
+  atualizarStatusItemPatrimonioInSupabase,
   pushExtravioToSupabase,
   pushDisparoToSupabase,
   pushAuditoriaToSupabase,
@@ -192,6 +194,9 @@ export class DatabaseEngine {
     const savedAuth = localStorage.getItem(STORAGE_PREFIX + 'auth_session');
     this.isAuthenticated = savedAuth === 'true';
 
+    // Reconcile item statuses on startup with active allocations and cautelas
+    this.reconciliarStatusItens();
+
     // Auto-fetch data from Supabase in the background on startup
     setTimeout(() => {
       this.pullAllFromSupabase().catch((e) => console.log('Inicialização do Supabase:', e));
@@ -279,6 +284,58 @@ export class DatabaseEngine {
     save('current_operador', this.currentOperadorId);
   }
 
+  /**
+   * Reconcilia status de itens com alocações e cautelas ativas.
+   * Corrige eventuais inconsistências (ex: item alocado que estava com status 'Disponível')
+   * e garante persistência tanto local quanto no Supabase.
+   */
+  public reconciliarStatusItens(): boolean {
+    let modified = false;
+
+    for (const item of this.itens) {
+      const isDamagedOrMaintenance = item.status === 'Manutenção' || item.status === 'Danificado / Avariado';
+
+      // 1. Verificar cautela ativa
+      const hasActiveCautela = this.cautelaItens.some((ci) => {
+        if (ci.id_item !== item.id_item) return false;
+        const c = this.cautelas.find((caut) => caut.id_cautela === ci.id_cautela);
+        return c && (c.status === 'Aberta' || c.status === 'Atrasada');
+      });
+
+      // 2. Verificar alocação ativa
+      const hasActiveAloc = this.alocacaoItens.some((ai) => {
+        if (ai.id_item !== item.id_item) return false;
+        const a = this.alocacoes.find((al) => al.id_alocacao === ai.id_alocacao);
+        return a && a.status === 'Ativa';
+      });
+
+      if (hasActiveCautela) {
+        if (item.status !== 'Cautelado') {
+          item.status = 'Cautelado';
+          modified = true;
+          atualizarStatusItemPatrimonioInSupabase(item.id_item, 'Cautelado').catch(() => {});
+        }
+      } else if (hasActiveAloc) {
+        if (item.status === 'Disponível') {
+          item.status = 'Alocado';
+          modified = true;
+          atualizarStatusItemPatrimonioInSupabase(item.id_item, 'Alocado').catch(() => {});
+        }
+      } else if (!isDamagedOrMaintenance) {
+        if (item.status === 'Alocado' || item.status === 'Cautelado') {
+          item.status = 'Disponível';
+          modified = true;
+          atualizarStatusItemPatrimonioInSupabase(item.id_item, 'Disponível').catch(() => {});
+        }
+      }
+    }
+
+    if (modified) {
+      this.persistAll();
+    }
+    return modified;
+  }
+
   // Supabase Sync Methods
   public getSyncStatus() {
     return {
@@ -354,6 +411,7 @@ export class DatabaseEngine {
       if (res.data.alocacaoItens) this.alocacaoItens = res.data.alocacaoItens;
       if (res.data.auditoriaLogs && res.data.auditoriaLogs.length > 0) this.auditoriaLogs = res.data.auditoriaLogs;
 
+      this.reconciliarStatusItens();
       this.persistAll();
       this.syncStatus = 'synced';
       this.lastSyncDate = new Date();
@@ -392,6 +450,7 @@ export class DatabaseEngine {
         if (res.data.alocacaoItens) this.alocacaoItens = res.data.alocacaoItens;
         if (res.data.auditoriaLogs && res.data.auditoriaLogs.length > 0) this.auditoriaLogs = res.data.auditoriaLogs;
 
+        this.reconciliarStatusItens();
         this.persistAll();
         this.lastSyncDate = new Date();
         this.notify();
@@ -807,23 +866,26 @@ export class DatabaseEngine {
         const unid = this.unidades.find((u) => u.id_unidade === latestAloc.id_unidade);
 
         if (unid) {
-          // If item is 'Disponível' and the active allocation is for an external DPM/CPM,
-          // the item has returned to the Sede and the old remote allocation is stale.
-          if (item.status === 'Disponível' && latestAloc.id_unidade !== 1 && unid.tipo_unidade !== 'Sede') {
-            alocacao_atual = undefined;
-          } else {
-            alocacao_atual = {
-              id_alocacao: latestAloc.id_alocacao,
-              id_unidade: latestAloc.id_unidade,
-              unidade_nome: unid.nome,
-              data_alocacao: latestAloc.data_alocacao,
-            };
-          }
+          alocacao_atual = {
+            id_alocacao: latestAloc.id_alocacao,
+            id_unidade: latestAloc.id_unidade,
+            unidade_nome: unid.nome,
+            data_alocacao: latestAloc.data_alocacao,
+          };
         }
+      }
+
+      // Compute consistent operational status
+      let effectiveStatus = item.status;
+      if (cautela_atual && effectiveStatus !== 'Cautelado') {
+        effectiveStatus = 'Cautelado';
+      } else if (alocacao_atual && effectiveStatus === 'Disponível') {
+        effectiveStatus = 'Alocado';
       }
 
       return {
         ...item,
+        status: effectiveStatus,
         tipo_material,
         detalhe_arma,
         detalhe_colete,
@@ -1460,7 +1522,7 @@ export class DatabaseEngine {
       if (!it) return { success: false, error: 'Item patrimonial não encontrado' };
 
       // Case 1: Returning to Sede (Caicó / Pátio Geral)
-      if (!params.id_unidade_destino || params.id_unidade_destino === 0) {
+      if (!params.id_unidade_destino || params.id_unidade_destino === 0 || params.id_unidade_destino === 1) {
         return this.devolverItemAlocacao(params.id_item, params.novoStatus || 'Disponível', params.motivo);
       }
 
@@ -1474,6 +1536,8 @@ export class DatabaseEngine {
         return false;
       });
 
+      const oldAlocacoesToClose: number[] = [];
+
       for (const activeLink of activeLinks) {
         const oldAlocId = activeLink.id_alocacao;
         this.alocacaoItens = this.alocacaoItens.filter(
@@ -1481,37 +1545,71 @@ export class DatabaseEngine {
         );
         const remaining = this.alocacaoItens.filter((ai) => ai.id_alocacao === oldAlocId);
         if (remaining.length === 0) {
+          oldAlocacoesToClose.push(oldAlocId);
           const oldAloc = this.alocacoes.find((a) => a.id_alocacao === oldAlocId);
           if (oldAloc) {
             oldAloc.status = 'Devolvida';
             oldAloc.data_devolucao_efetiva = new Date().toISOString();
           }
         }
-        removerItemDeAlocacaoInSupabase(oldAlocId, params.id_item, remaining.length === 0, 'Disponível').catch(() => {});
       }
 
-      // Step B: Set item as 'Disponível' temporarily to pass createAlocacao validation
-      it.status = 'Disponível';
+      // Step B: Set item directly to 'Alocado'
+      it.status = 'Alocado';
       if (params.motivo) {
-        it.observacao = it.observacao ? `${it.observacao} [Remanejado: ${params.motivo}]` : `[Remanejado: ${params.motivo}]`;
+        it.observacao = it.observacao
+          ? `${it.observacao} [Remanejado: ${params.motivo}]`
+          : `[Remanejado: ${params.motivo}]`;
       }
 
-      // Step C: Create new allocation for destination
-      const res = this.createAlocacao({
+      // Step C: Create new active allocation
+      const nextAlocId = Math.max(0, ...this.alocacoes.map((a) => a.id_alocacao)) + 1;
+      const novaAloc: AlocacaoUnidade = {
+        id_alocacao: nextAlocId,
         id_unidade: params.id_unidade_destino,
-        itensIds: [params.id_item],
+        id_operador: this.currentOperadorId,
+        data_alocacao: new Date().toISOString(),
+        data_devolucao_efetiva: null,
+        status: 'Ativa',
+      };
+
+      this.alocacoes.push(novaAloc);
+      this.alocacaoItens.push({
+        id_alocacao: nextAlocId,
+        id_item: params.id_item,
       });
 
-      if (res.success) {
-        this.registrarAuditoria('REALOCACAO_ITEM_UNIDADE', 'alocacao_unidade', {
-          id_item: params.id_item,
-          id_unidade_destino: params.id_unidade_destino,
-          id_alocacao_nova: res.id_alocacao,
-          motivo: params.motivo,
-        });
-      }
+      this.persistAll();
+      this.notify();
 
-      return res;
+      // Step D: Synchronize atomically with Supabase
+      realocarItemInSupabase({
+        id_item: params.id_item,
+        oldAlocacoesToClose,
+        id_unidade_destino: params.id_unidade_destino,
+        id_operador: this.currentOperadorId,
+        motivo: params.motivo,
+      }).then((res) => {
+        if (res.success && res.definitiveId && Number(res.definitiveId) !== nextAlocId) {
+          const defId = Number(res.definitiveId);
+          novaAloc.id_alocacao = defId;
+          const link = this.alocacaoItens.find((ai) => ai.id_alocacao === nextAlocId && ai.id_item === params.id_item);
+          if (link) link.id_alocacao = defId;
+          this.persistAll();
+          this.notify();
+        }
+      }).catch((e) => {
+        console.warn('[Supabase Sync] Falha ao sincronizar realocação:', e);
+      });
+
+      this.registrarAuditoria('REALOCACAO_ITEM_UNIDADE', 'alocacao_unidade', {
+        id_item: params.id_item,
+        id_unidade_destino: params.id_unidade_destino,
+        id_alocacao_nova: nextAlocId,
+        motivo: params.motivo,
+      });
+
+      return { success: true, id_alocacao: nextAlocId };
     } catch (err: any) {
       return { success: false, error: err.message || 'Erro ao realocar item para unidade' };
     }

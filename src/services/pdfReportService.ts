@@ -403,26 +403,170 @@ export class PdfReportService {
     doc.save(`Relatorio_Cautelas_6BPM_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  // 4. Relatório Geral do Módulo (Comunicação, Informática ou Móveis)
+  // 4. Relatório Geral do Módulo (Comunicação, Informática ou Móveis com Gráficos e Distribuição)
   public static gerarRelatorioModulo(db: DatabaseEngine, modulo: ModuloTipo) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const { operador, policial } = db.getCurrentOperador();
     const opNome = `${policial.patente} ${policial.nome_guerra} (${operador.perfil_acesso})`;
+    const pageWidth = doc.internal.pageSize.getWidth();
 
     this.addHeader(
       doc,
-      `RELATÓRIO PATRIMONIAL - MÓDULO ${modulo.toUpperCase()}`,
-      `6º Batalhão de Polícia Militar • Caicó/RN • Inventário Geral e Alocações`
+      `RELATÓRIO OFICIAL DE PATRIMÔNIO - ${modulo.toUpperCase()}`,
+      `6º Batalhão de Polícia Militar • Caicó/RN • Distribuição por Unidade e Condição Operacional`
     );
 
     const itens = db.getItensComDetalhes(modulo);
+    const alocacoes = db.getAlocacoesCompletas(modulo);
+    const totalItens = itens.length;
+
+    // --- 1. Cálculo da Distribuição por Condição ---
+    const condicoes = [
+      { label: 'Disponível (Pronto p/ Uso)', key: 'Disponível', cor: [16, 185, 129] as [number, number, number] },
+      { label: 'Alocado (Em Setor / Unidade)', key: 'Alocado', cor: [79, 70, 229] as [number, number, number] },
+      { label: 'Cautelado (Policial Militar)', key: 'Cautelado', cor: [37, 99, 235] as [number, number, number] },
+      { label: 'Manutenção (Reparo)', key: 'Manutenção', cor: [245, 158, 11] as [number, number, number] },
+      { label: 'Danificado / Avariado', key: 'Danificado / Avariado', cor: [225, 29, 72] as [number, number, number] },
+    ];
+
+    const condicoesData = condicoes
+      .map((c) => {
+        const count = itens.filter((i) => i.status === c.key).length;
+        const pct = totalItens > 0 ? ((count / totalItens) * 100).toFixed(1) : '0.0';
+        return { ...c, count, pct };
+      })
+      .filter((c) => c.count > 0 || c.key === 'Disponível' || c.key === 'Alocado');
+
+    // --- 2. Cálculo da Distribuição por Unidade ---
+    const defaultSedeName =
+      modulo === 'Comunicação'
+        ? 'Sala de Rádio / P3 (Sede)'
+        : modulo === 'Informática'
+        ? 'Depósito de TI / P4 (Sede)'
+        : 'Depósito Geral da P4 (Sede)';
+
+    const unitMap: Record<string, { nome: string; count: number }> = {};
+    unitMap['sede'] = { nome: defaultSedeName, count: 0 };
+
+    itens.forEach((it) => {
+      if (it.alocacao_atual && it.alocacao_atual.id_unidade !== 1 && !it.alocacao_atual.unidade_nome.toLowerCase().includes('sede')) {
+        const uId = `unid_${it.alocacao_atual.id_unidade || it.alocacao_atual.unidade_nome}`;
+        if (!unitMap[uId]) {
+          unitMap[uId] = { nome: it.alocacao_atual.unidade_nome, count: 0 };
+        }
+        unitMap[uId].count += 1;
+      } else {
+        unitMap['sede'].count += 1;
+      }
+    });
+
+    const unidadesList = Object.values(unitMap).sort((a, b) => b.count - a.count);
+
+    // --- Desenhar Seção 1: Indicadores e Condição dos Equipamentos (Gráfico em Barras) ---
+    let currentY = 50;
+
+    const boxHeightCondicoes = Math.max(38, 10 + condicoesData.length * 6.5);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, currentY, pageWidth - 28, boxHeightCondicoes, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`1. SITUAÇÃO / CONDIÇÃO PATRIMONIAL (${totalItens} ITENS)`, 18, currentY + 6);
+
+    let barY = currentY + 11;
+    condicoesData.forEach((c) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${c.label}:`, 18, barY + 3.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${c.count} un. (${c.pct}%)`, 105, barY + 3.5);
+
+      const barMaxWidth = 75;
+      const barX = 120;
+      doc.setFillColor(226, 232, 240);
+      doc.roundedRect(barX, barY, barMaxWidth, 4, 1, 1, 'F');
+
+      const filledWidth = totalItens > 0 ? (c.count / totalItens) * barMaxWidth : 0;
+      if (filledWidth > 0) {
+        doc.setFillColor(c.cor[0], c.cor[1], c.cor[2]);
+        doc.roundedRect(barX, barY, Math.max(filledWidth, 2), 4, 1, 1, 'F');
+      }
+
+      barY += 6.5;
+    });
+
+    currentY += boxHeightCondicoes + 4;
+
+    // --- Desenhar Seção 2: Distribuição por Unidade / Setor (Gráfico em Barras) ---
+    const boxHeightUnidades = Math.min(52, 10 + Math.min(unidadesList.length, 6) * 6.5);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, currentY, pageWidth - 28, boxHeightUnidades, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('2. QUANTITATIVO POR LOCAL / UNIDADE / SETOR', 18, currentY + 6);
+
+    let uBarY = currentY + 11;
+    unidadesList.slice(0, 6).forEach((u) => {
+      const pct = totalItens > 0 ? ((u.count / totalItens) * 100).toFixed(1) : '0.0';
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(51, 65, 85);
+
+      const trimmedName = u.nome.length > 38 ? u.nome.substring(0, 36) + '...' : u.nome;
+      doc.text(trimmedName, 18, uBarY + 3.2);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${u.count} (${pct}%)`, 105, uBarY + 3.2);
+
+      const barMaxWidth = 75;
+      const barX = 120;
+      doc.setFillColor(226, 232, 240);
+      doc.roundedRect(barX, uBarY, barMaxWidth, 4, 1, 1, 'F');
+
+      const filledWidth = totalItens > 0 ? (u.count / totalItens) * barMaxWidth : 0;
+      if (filledWidth > 0) {
+        doc.setFillColor(79, 70, 229);
+        doc.roundedRect(barX, uBarY, Math.max(filledWidth, 2), 4, 1, 1, 'F');
+      }
+
+      uBarY += 6.5;
+    });
+
+    currentY += boxHeightUnidades + 4;
+
+    // --- Seção 3: Tabela de Itens ---
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('3. INVENTÁRIO NOMINATIVO DE MATERIAIS', 14, currentY);
+
+    const themeColors: Record<string, [number, number, number]> = {
+      'Comunicação': [5, 150, 105],
+      'Informática': [8, 145, 178],
+      'Móveis e Diversos': [124, 58, 237],
+    };
+    const headFill = themeColors[modulo] || [51, 65, 85];
 
     const tableRows = itens.map((it) => {
       let spec = it.observacao || '-';
       if (it.detalhe_comunicacao) {
-        spec = `IMEI: ${it.detalhe_comunicacao.imei_mac || '-'} | Linha: ${it.detalhe_comunicacao.numero_linha || '-'}`;
+        spec = `IMEI/MAC: ${it.detalhe_comunicacao.imei_mac || '-'} | Linha: ${it.detalhe_comunicacao.numero_linha || '-'}`;
       } else if (it.detalhe_informatica) {
         spec = it.detalhe_informatica.configuracao_resumida || '-';
+      }
+
+      let lotacao = defaultSedeName;
+      if (it.cautela_atual) {
+        lotacao = `Cautela #${it.cautela_atual.id_cautela}: ${it.cautela_atual.policial_grad} ${it.cautela_atual.policial_nome}`;
+      } else if (it.alocacao_atual) {
+        lotacao = it.alocacao_atual.unidade_nome;
       }
 
       return [
@@ -432,23 +576,24 @@ export class PdfReportService {
         `${it.marca || ''} ${it.modelo || ''}`.trim(),
         spec,
         it.status,
+        lotacao,
       ];
     });
 
     autoTable(doc, {
-      startY: 52,
-      head: [['Tombo', 'Nº Série', 'Tipo de Item', 'Marca / Modelo', 'Especificação / Detalhes', 'Status']],
+      startY: currentY + 3,
+      head: [['Tombo', 'Nº Série', 'Tipo de Item', 'Marca / Modelo', 'Especificação', 'Status', 'Lotação / Emprego']],
       body: tableRows,
       theme: 'grid',
-      headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      headStyles: { fillColor: headFill, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+      bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      styles: { cellPadding: 2 },
+      styles: { cellPadding: 1.8 },
       margin: { left: 14, right: 14 },
     });
 
     this.addFooter(doc, opNome);
-    doc.save(`Relatorio_${modulo}_6BPM_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`Relatorio_${modulo.replace(/\s+/g, '_')}_6BPM_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
   // 5. Relatório do Efetivo do 6º BPM

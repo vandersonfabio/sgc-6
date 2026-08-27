@@ -1639,14 +1639,137 @@ export async function removerItemDeAlocacaoInSupabase(
     }
 
     // Update item status in item_patrimonio
-    await client
-      .from('item_patrimonio')
-      .update({ status: novoStatusItem })
-      .eq('id_item', id_item);
+    if (novoStatusItem) {
+      await client
+        .from('item_patrimonio')
+        .update({ status: novoStatusItem })
+        .eq('id_item', id_item);
+    }
 
     return { success: true };
   } catch (err: any) {
     console.error('[Supabase] Exceção ao remover item de alocação:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Realoca um item/viatura diretamente para outra unidade no Supabase de forma atômica e consistente.
+ * - Remove vínculos anteriores do item em alocacao_item
+ * - Se as alocações anteriores ficaram vazias, marca-as como 'Devolvida'
+ * - Cria a nova alocacao_unidade com status 'Ativa'
+ * - Cria o novo vínculo em alocacao_item
+ * - Define explicitamente o status do item_patrimonio como 'Alocado'
+ */
+export async function realocarItemInSupabase(params: {
+  id_item: number;
+  oldAlocacoesToClose: number[];
+  id_unidade_destino: number;
+  id_operador: string;
+  motivo?: string;
+}): Promise<SyncOperationResult<{ id_alocacao: number }>> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  try {
+    // 1. Remove vinculos anteriores deste item
+    await client
+      .from('alocacao_item')
+      .delete()
+      .eq('id_item', params.id_item);
+
+    // 2. Finaliza alocações anteriores que ficaram sem itens
+    for (const oldAlocId of params.oldAlocacoesToClose) {
+      await client
+        .from('alocacao_unidade')
+        .update({
+          status: 'Devolvida',
+          data_devolucao_efetiva: new Date().toISOString(),
+        })
+        .eq('id_alocacao', oldAlocId);
+    }
+
+    // 3. Cria a nova alocação para a unidade de destino
+    const alocPayload = {
+      id_unidade: params.id_unidade_destino,
+      id_operador: params.id_operador,
+      data_alocacao: new Date().toISOString(),
+      data_devolucao_efetiva: null,
+      status: 'Ativa',
+    };
+
+    const { data: insertedAloc, error: alocErr } = await client
+      .from('alocacao_unidade')
+      .insert(alocPayload)
+      .select()
+      .single();
+
+    if (alocErr || !insertedAloc) {
+      console.error('[Supabase] Falha ao criar nova alocação na realocação:', alocErr);
+      return { success: false, error: alocErr?.message || 'Erro ao criar nova alocação' };
+    }
+
+    const definitiveAlocId = Number(insertedAloc.id_alocacao);
+
+    // 4. Cria o vínculo do item com a nova alocação
+    await client.from('alocacao_item').insert({
+      id_alocacao: definitiveAlocId,
+      id_item: params.id_item,
+    });
+
+    // 5. Garante que o status do item é 'Alocado'
+    const updateItemPayload: any = { status: 'Alocado' };
+    if (params.motivo) {
+      const { data: currentItem } = await client
+        .from('item_patrimonio')
+        .select('observacao')
+        .eq('id_item', params.id_item)
+        .maybeSingle();
+
+      const obsAtual = currentItem?.observacao || '';
+      updateItemPayload.observacao = obsAtual
+        ? `${obsAtual} [Remanejado: ${params.motivo}]`
+        : `[Remanejado: ${params.motivo}]`;
+    }
+
+    await client
+      .from('item_patrimonio')
+      .update(updateItemPayload)
+      .eq('id_item', params.id_item);
+
+    return {
+      success: true,
+      data: { id_alocacao: definitiveAlocId },
+      definitiveId: definitiveAlocId,
+    };
+  } catch (err: any) {
+    console.error('[Supabase] Exceção na realocação de item:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Atualiza diretamente o status de um item_patrimonio no Supabase (ex: reconciliação automática).
+ */
+export async function atualizarStatusItemPatrimonioInSupabase(
+  id_item: number,
+  status: string
+): Promise<SyncOperationResult> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  try {
+    const { error } = await client
+      .from('item_patrimonio')
+      .update({ status })
+      .eq('id_item', id_item);
+
+    if (error) {
+      console.warn('[Supabase] Falha ao reconciliar status de item:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
