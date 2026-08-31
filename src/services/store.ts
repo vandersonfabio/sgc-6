@@ -1823,6 +1823,13 @@ export class DatabaseEngine {
     try {
       const itemFinal = { ...item };
 
+      if (itemFinal.numero_serie !== undefined && itemFinal.numero_serie !== null) {
+        itemFinal.numero_serie = itemFinal.numero_serie.replace(/\s+/g, '') || null;
+      }
+      if (itemFinal.numero_tombo !== undefined && itemFinal.numero_tombo !== null) {
+        itemFinal.numero_tombo = itemFinal.numero_tombo.replace(/\s+/g, '') || null;
+      }
+
       // Validate against TipoMaterial if provided
       if (itemFinal.id_tipo_material) {
         const tipo = this.getTipoMaterialById(itemFinal.id_tipo_material);
@@ -2158,6 +2165,13 @@ export class DatabaseEngine {
       const itemIdx = this.itens.findIndex((i) => i.id_item === id_item);
       if (itemIdx === -1) {
         return { success: false, error: 'Item patrimonial não encontrado' };
+      }
+
+      if (itemDados.numero_serie !== undefined && itemDados.numero_serie !== null) {
+        itemDados.numero_serie = itemDados.numero_serie.replace(/\s+/g, '') || null;
+      }
+      if (itemDados.numero_tombo !== undefined && itemDados.numero_tombo !== null) {
+        itemDados.numero_tombo = itemDados.numero_tombo.replace(/\s+/g, '') || null;
       }
 
       // Check serial number uniqueness if changed

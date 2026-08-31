@@ -29,7 +29,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setErrorMessage(null);
 
     if (!identificador.trim()) {
-      setErrorMessage('Por favor, informe o seu E-mail Institucional ou Matrícula PM.');
+      setErrorMessage('Por favor, informe a sua Matrícula PM.');
       return;
     }
     if (!senha) {
@@ -63,11 +63,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       <header className="w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-blue-600 border border-blue-400/40 text-white font-black text-sm flex items-center justify-center shadow-lg shadow-blue-900/30 tracking-wider">
-            6BPM
+            SGC
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold tracking-tight text-white">POLÍCIA MILITAR DO RN</span>
+              <span className="text-sm font-bold tracking-tight text-white">PMRN</span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
                 PMRN
               </span>
@@ -127,13 +127,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     type="text"
                     value={identificador}
                     onChange={(e) => setIdentificador(e.target.value)}
-                    placeholder="Matrícula PM ou E-mail institucional"
+                    placeholder="Matrícula PM"
                     required
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 pl-1">
-                  Ex: <code>1984201</code> ou <code>armeiro.6bpm@pm.rn.gov.br</code>
+                  Ex: <code>1984201</code>
                 </p>
               </div>
 

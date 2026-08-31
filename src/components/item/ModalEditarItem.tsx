@@ -117,8 +117,8 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
       tipo_item: tipoItem,
       marca: marca || null,
       modelo: modelo || null,
-      numero_serie: isViatura || selectedTipo?.permite_numero_serie === false ? null : numeroSerie.trim() || null,
-      numero_tombo: isViatura || selectedTipo?.permite_numero_tombo === false ? null : numeroTombo.trim() || null,
+      numero_serie: isViatura || selectedTipo?.permite_numero_serie === false ? null : numeroSerie.replace(/\s+/g, '') || null,
+      numero_tombo: isViatura || selectedTipo?.permite_numero_tombo === false ? null : numeroTombo.replace(/\s+/g, '') || null,
       status,
       observacao: observacao || null,
       data_inicio_manutencao: isManutencao
@@ -427,9 +427,13 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
                 </label>
                 <input
                   type="text"
+                  placeholder="Ex: ACH192834 (sem espaços)"
                   value={numeroSerie}
                   disabled={selectedTipo?.permite_numero_serie === false}
-                  onChange={(e) => setNumeroSerie(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') e.preventDefault();
+                  }}
+                  onChange={(e) => setNumeroSerie(e.target.value.replace(/\s+/g, ''))}
                   required={selectedTipo?.exige_numero_serie}
                   className={`w-full border rounded-lg p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs ${
                     selectedTipo?.permite_numero_serie === false
@@ -451,9 +455,13 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
                 </label>
                 <input
                   type="text"
+                  placeholder="Ex: TB-6BPM-001 (sem espaços)"
                   value={numeroTombo}
                   disabled={selectedTipo?.permite_numero_tombo === false}
-                  onChange={(e) => setNumeroTombo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') e.preventDefault();
+                  }}
+                  onChange={(e) => setNumeroTombo(e.target.value.replace(/\s+/g, ''))}
                   required={selectedTipo?.exige_numero_tombo}
                   className={`w-full border rounded-lg p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs ${
                     selectedTipo?.permite_numero_tombo === false
