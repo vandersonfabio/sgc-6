@@ -12,6 +12,7 @@ import {
   X,
   PlusCircle,
   Edit,
+  Eye,
   FileDown,
   Building2,
   ArrowUpDown,
@@ -42,7 +43,7 @@ const patenteOrder: Record<string, number> = {
 };
 
 export const EfetivoView: React.FC = () => {
-  const { db, policiais, unidades } = useDatabase();
+  const { db, policiais, unidades, canManageEfetivo, isComandante } = useDatabase();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPatente, setFilterPatente] = useState('todas');
   const [showModalNovoPolicial, setShowModalNovoPolicial] = useState(false);
@@ -198,13 +199,15 @@ export const EfetivoView: React.FC = () => {
             <FileDown className="w-4 h-4 text-red-600" />
             <span>Relatório PDF</span>
           </button>
-          <button
-            onClick={() => setShowModalNovoPolicial(true)}
-            className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm shadow-blue-600/30 transition focus:ring-2 focus:ring-blue-500"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Cadastrar Policial Militar</span>
-          </button>
+          {canManageEfetivo && (
+            <button
+              onClick={() => setShowModalNovoPolicial(true)}
+              className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm shadow-blue-600/30 transition focus:ring-2 focus:ring-blue-500"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Cadastrar Policial Militar</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -314,14 +317,18 @@ export const EfetivoView: React.FC = () => {
                     )}
                   </td>
                   <td className="p-3 text-right">
-                    <button
-                      onClick={() => setSelectedPolicialEdit(p)}
-                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
-                      title="Editar Dados do Policial Militar"
-                    >
-                      <Edit className="w-3.5 h-3.5 text-blue-700" />
-                      <span>Editar</span>
-                    </button>
+                    {canManageEfetivo ? (
+                      <button
+                        onClick={() => setSelectedPolicialEdit(p)}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+                        title="Editar Dados do Policial Militar"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-blue-700" />
+                        <span>Editar</span>
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                    )}
                   </td>
                 </tr>
               );

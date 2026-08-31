@@ -33,7 +33,8 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
   onRegistrarDisparo,
   onRegistrarExtravio,
 }) => {
-  const { db } = useDatabase();
+  const { db, canManageCautelas } = useDatabase();
+  const canManage = canManageCautelas(modulo);
   const [searchMatricula, setSearchMatricula] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'Temporária' | 'Permanente' | 'atrasadas'>('todos');
 
@@ -268,7 +269,7 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
 
                     <td className="p-3 text-right">
                       <div className="flex items-center justify-end space-x-1.5 flex-wrap gap-y-1">
-                        {onRegistrarDisparo && (
+                        {canManage && onRegistrarDisparo && (
                           <button
                             onClick={() => onRegistrarDisparo(c)}
                             className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-semibold border border-amber-200 transition"
@@ -278,7 +279,7 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                             <span>Disparo</span>
                           </button>
                         )}
-                        {onRegistrarExtravio && (
+                        {canManage && onRegistrarExtravio && (
                           <button
                             onClick={() => onRegistrarExtravio(c)}
                             className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-semibold border border-rose-200 transition"
@@ -295,14 +296,16 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                         >
                           <Printer className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => onDarBaixa(c)}
-                          className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition"
-                          title="Dar baixa no material"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Dar Baixa</span>
-                        </button>
+                        {canManage && (
+                          <button
+                            onClick={() => onDarBaixa(c)}
+                            className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition"
+                            title="Dar baixa no material"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Dar Baixa</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

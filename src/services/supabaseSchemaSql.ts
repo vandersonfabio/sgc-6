@@ -29,8 +29,12 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-    CREATE TYPE perfil_acesso AS ENUM ('Superuser', 'P4', 'Armeiro', 'Rádio');
+    CREATE TYPE perfil_acesso AS ENUM ('Superuser', 'P4', 'Armeiro', 'Rádio', 'Comandante');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    ALTER TYPE perfil_acesso ADD VALUE IF NOT EXISTS 'Comandante';
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_object THEN NULL; END $$;
 
 DO $$ BEGIN
     CREATE TYPE condicao_item AS ENUM ('Novo', 'Bom', 'Regular', 'Manutenção', 'Inservível');
@@ -128,6 +132,8 @@ CREATE TABLE IF NOT EXISTS item_patrimonio (
     numero_tombo VARCHAR(50) UNIQUE,
     status VARCHAR(30) NOT NULL DEFAULT 'Disponível',
     observacao TEXT,
+    data_inicio_manutencao TIMESTAMPTZ,
+    motivo_manutencao TEXT,
     criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

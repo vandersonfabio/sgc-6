@@ -56,6 +56,7 @@ export const SEED_POLICIAIS: Policial[] = [
   { id_policial: 10, matricula: 'PM-251334-5', patente: 'Sd PM', nome_guerra: 'Queiroz', nome_completo: 'Tiago Queiroz Fernandes', id_unidade_lotacao: 22, status: 'Ativo' },
   { id_policial: 11, matricula: 'PM-248722-6', patente: 'Cb PM', nome_guerra: 'Valdir', nome_completo: 'Valdir Santana Filho', id_unidade_lotacao: 30, status: 'Ativo' },
   { id_policial: 12, matricula: 'PM-253441-9', patente: 'Sd PM', nome_guerra: 'Macedo', nome_completo: 'Gabriel Macedo de Brito', id_unidade_lotacao: 31, status: 'Ativo' },
+  { id_policial: 13, matricula: 'PM-190001-0', patente: 'Ten Cel PM', nome_guerra: 'Costa (Comandante)', nome_completo: 'Albervan Costa da Silva', id_unidade_lotacao: 1, status: 'Ativo', email: 'comandante.6bpm@pm.rn.gov.br' },
 ];
 
 export const SEED_OPERADORES: OperadorSistema[] = [
@@ -92,6 +93,15 @@ export const SEED_OPERADORES: OperadorSistema[] = [
     perfil_acesso: 'Rádio',
     status: 'Ativo',
     email: 'radio.6bpm@pm.rn.gov.br',
+    senha: '123',
+    criado_em: '2026-01-01T08:00:00Z',
+  },
+  {
+    id_operador: 'a0000000-0000-0000-0000-000000000005',
+    id_policial: 13,
+    perfil_acesso: 'Comandante',
+    status: 'Ativo',
+    email: 'comandante.6bpm@pm.rn.gov.br',
     senha: '123',
     criado_em: '2026-01-01T08:00:00Z',
   },

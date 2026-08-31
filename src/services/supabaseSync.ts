@@ -42,6 +42,8 @@ export interface TableStats {
   estoque_lote: number;
   cautela: number;
   alocacao_unidade: number;
+  registro_disparo?: number;
+  registro_extravio?: number;
   auditoria_sistema: number;
 }
 
@@ -235,6 +237,8 @@ export async function pushItemToSupabase(
       numero_tombo: item.numero_tombo || null,
       status: item.status,
       observacao: item.observacao || null,
+      data_inicio_manutencao: item.data_inicio_manutencao || null,
+      motivo_manutencao: item.motivo_manutencao || null,
     };
 
     if (existingDbId) {
@@ -1844,6 +1848,54 @@ export async function pushDisparoToSupabase(disparo: RegistroDisparo): Promise<S
 }
 
 /**
+ * Deletes a loss/theft incident (Registro de Extravio) from Supabase.
+ */
+export async function deleteExtravioFromSupabase(id_extravio: number): Promise<SyncOperationResult> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  try {
+    const { error } = await client
+      .from('registro_extravio')
+      .delete()
+      .eq('id_extravio', id_extravio);
+
+    if (error) {
+      console.error('[Supabase] Falha ao excluir registro_extravio:', error);
+      return { success: false, error: error.message, code: error.code };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase] Exceção ao excluir registro_extravio:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Deletes a shots fired incident (Registro de Disparo) from Supabase.
+ */
+export async function deleteDisparoFromSupabase(id_disparo: number): Promise<SyncOperationResult> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  try {
+    const { error } = await client
+      .from('registro_disparo')
+      .delete()
+      .eq('id_disparo', id_disparo);
+
+    if (error) {
+      console.error('[Supabase] Falha ao excluir registro_disparo:', error);
+      return { success: false, error: error.message, code: error.code };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase] Exceção ao excluir registro_disparo:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Pushes an Auditoria log to Supabase.
  * - Does not send id_auditoria on INSERT.
  * - Handles missing table gracefully.
@@ -2004,7 +2056,7 @@ export async function runSupabaseFullDiagnostics(): Promise<FullDiagnosticReport
       canRead: false,
       canWrite: false,
       tablesFound: 0,
-      totalTables: 12,
+      totalTables: 14,
       steps,
     };
   }
@@ -2024,6 +2076,8 @@ export async function runSupabaseFullDiagnostics(): Promise<FullDiagnosticReport
     'cautela',
     'cautela_item',
     'alocacao_unidade',
+    'registro_disparo',
+    'registro_extravio',
     'auditoria_sistema',
   ];
 
@@ -2277,6 +2331,8 @@ export async function getSupabaseTableCounts(): Promise<{ success: boolean; stat
       estoque_lote,
       cautela,
       alocacao_unidade,
+      registro_disparo,
+      registro_extravio,
       auditoria_sistema,
     ] = await Promise.all([
       getCount('unidade'),
@@ -2291,6 +2347,8 @@ export async function getSupabaseTableCounts(): Promise<{ success: boolean; stat
       getCount('estoque_lote'),
       getCount('cautela'),
       getCount('alocacao_unidade'),
+      getCount('registro_disparo'),
+      getCount('registro_extravio'),
       getCount('auditoria_sistema'),
     ]);
 
@@ -2309,6 +2367,8 @@ export async function getSupabaseTableCounts(): Promise<{ success: boolean; stat
         estoque_lote,
         cautela,
         alocacao_unidade,
+        registro_disparo,
+        registro_extravio,
         auditoria_sistema,
       },
     };
@@ -2328,7 +2388,8 @@ export async function getSupabaseTableCounts(): Promise<{ success: boolean; stat
  * 7. Estoque Lotes -> Maps local ID to DB ID
  * 8. Cautelas + CautelaItens + CautelaEstoque
  * 9. Alocacoes + AlocacaoItens
- * 10. Auditoria
+ * 10. Registros de Disparo e Extravio
+ * 11. Auditoria
  */
 export async function pushAllDataToSupabase(data: {
   unidades: Unidade[];
@@ -2348,6 +2409,8 @@ export async function pushAllDataToSupabase(data: {
   cautelaEstoque: CautelaEstoque[];
   alocacoes: AlocacaoUnidade[];
   alocacaoItens: AlocacaoItem[];
+  registrosDisparo?: RegistroDisparo[];
+  registrosExtravio?: RegistroExtravio[];
   auditoriaLogs: AuditoriaLog[];
 }): Promise<FullSyncResult> {
   const client = getSupabaseClient();
@@ -2574,6 +2637,72 @@ export async function pushAllDataToSupabase(data: {
       message: `${alocProcessed} alocações de unidade sincronizadas`,
     });
 
+    // 9. REGISTROS DE DISPARO
+    if (data.registrosDisparo && data.registrosDisparo.length > 0) {
+      let dispProcessed = 0;
+      let dispErrors = 0;
+      for (const d of data.registrosDisparo) {
+        const dbPolId = mapPolicialId.get(d.id_policial) || d.id_policial;
+        const dbLoteId = d.id_lote ? mapLoteId.get(d.id_lote) || d.id_lote : null;
+        const dbCautelaId = d.id_cautela ? mapCautelaId.get(d.id_cautela) || d.id_cautela : null;
+        const res = await pushDisparoToSupabase({
+          ...d,
+          id_policial: dbPolId,
+          id_lote: dbLoteId,
+          id_cautela: dbCautelaId,
+        });
+        if (res.success) {
+          dispProcessed++;
+        } else {
+          dispErrors++;
+        }
+      }
+      results.push({
+        entity: 'registro_disparo',
+        success: dispErrors === 0,
+        processed: dispProcessed,
+        errors: dispErrors,
+        message: `${dispProcessed} registros de disparos sincronizados`,
+      });
+    }
+
+    // 10. REGISTROS DE EXTRAVIO
+    if (data.registrosExtravio && data.registrosExtravio.length > 0) {
+      let extProcessed = 0;
+      let extErrors = 0;
+      for (const e of data.registrosExtravio) {
+        const dbPolId = e.id_policial ? mapPolicialId.get(e.id_policial) || e.id_policial : null;
+        const dbCautelaId = e.id_cautela ? mapCautelaId.get(e.id_cautela) || e.id_cautela : null;
+        const mappedItens = (e.itens_extraviados || []).map((it) => ({
+          ...it,
+          id_item: mapItemId.get(it.id_item) || it.id_item,
+        }));
+        const mappedMunicoes = (e.municoes_extraviadas || []).map((m) => ({
+          ...m,
+          id_lote: mapLoteId.get(m.id_lote) || m.id_lote,
+        }));
+        const res = await pushExtravioToSupabase({
+          ...e,
+          id_policial: dbPolId,
+          id_cautela: dbCautelaId,
+          itens_extraviados: mappedItens,
+          municoes_extraviadas: mappedMunicoes,
+        });
+        if (res.success) {
+          extProcessed++;
+        } else {
+          extErrors++;
+        }
+      }
+      results.push({
+        entity: 'registro_extravio',
+        success: extErrors === 0,
+        processed: extProcessed,
+        errors: extErrors,
+        message: `${extProcessed} registros de extravio sincronizados`,
+      });
+    }
+
     const totalErrors = results.reduce((acc, r) => acc + r.errors, 0);
     const overallSuccess = totalErrors === 0;
 
@@ -2625,6 +2754,8 @@ export async function pullAllDataFromSupabase(): Promise<{
       cautelaEstoqueRes,
       alocacoesRes,
       alocacaoItensRes,
+      disparosRes,
+      extraviosRes,
       auditoriaRes,
     ] = await Promise.all([
       client.from('unidade').select('*'),
@@ -2644,6 +2775,8 @@ export async function pullAllDataFromSupabase(): Promise<{
       client.from('cautela_estoque').select('*'),
       client.from('alocacao_unidade').select('*'),
       client.from('alocacao_item').select('*'),
+      client.from('registro_disparo').select('*'),
+      client.from('registro_extravio').select('*'),
       client.from('auditoria_sistema').select('*').order('data_hora', { ascending: false }).limit(50),
     ]);
 
@@ -2653,6 +2786,34 @@ export async function pullAllDataFromSupabase(): Promise<{
         error: 'Tabelas não encontradas no Supabase. Execute o script DDL no SQL Editor primeiro.',
       };
     }
+
+    const policiaisList = (policiaisRes.data || []).map((p) => {
+      const unitId = p.id_unidade_lotacao != null ? Number(p.id_unidade_lotacao) : (p.id_unidade != null ? Number(p.id_unidade) : 1);
+      return {
+        id_policial: Number(p.id_policial),
+        matricula: p.matricula,
+        patente: p.patente,
+        nome_guerra: p.nome_guerra,
+        nome_completo: p.nome_completo,
+        id_unidade_lotacao: unitId,
+        id_unidade: unitId,
+        status: p.status,
+        contato: p.contato,
+        telefone: p.telefone,
+        email: p.email,
+      };
+    });
+
+    const operadoresList = (operadoresRes.data || []).map((op) => ({
+      id_operador: op.id_operador,
+      id_policial: Number(op.id_policial),
+      perfil_acesso: op.perfil_acesso,
+      status: op.status,
+      email: op.email,
+      senha: op.senha || '123',
+      ultimo_login: op.ultimo_login,
+      criado_em: op.criado_em,
+    }));
 
     const payload = {
       unidades: (unidadesRes.data || []).map((u) => ({
@@ -2666,22 +2827,7 @@ export async function pullAllDataFromSupabase(): Promise<{
         telefone: u.telefone,
         endereco: u.endereco,
       })),
-      policiais: (policiaisRes.data || []).map((p) => {
-        const unitId = p.id_unidade_lotacao != null ? Number(p.id_unidade_lotacao) : (p.id_unidade != null ? Number(p.id_unidade) : 1);
-        return {
-          id_policial: Number(p.id_policial),
-          matricula: p.matricula,
-          patente: p.patente,
-          nome_guerra: p.nome_guerra,
-          nome_completo: p.nome_completo,
-          id_unidade_lotacao: unitId,
-          id_unidade: unitId,
-          status: p.status,
-          contato: p.contato,
-          telefone: p.telefone,
-          email: p.email,
-        };
-      }),
+      policiais: policiaisList,
       tiposMateriais: (tiposRes.data || []).map((t) => ({
         id_tipo_material: Number(t.id_tipo_material),
         nome: t.nome,
@@ -2709,6 +2855,8 @@ export async function pullAllDataFromSupabase(): Promise<{
         numero_tombo: i.numero_tombo,
         status: i.status,
         observacao: i.observacao,
+        data_inicio_manutencao: i.data_inicio_manutencao || null,
+        motivo_manutencao: i.motivo_manutencao || null,
       })),
       detalheArma: (armaRes.data || []).map((a) => ({
         id_item: Number(a.id_item),
@@ -2758,16 +2906,7 @@ export async function pullAllDataFromSupabase(): Promise<{
         quantidade_atual: Number(l.quantidade_atual),
         observacao: l.observacao,
       })),
-      operadores: (operadoresRes.data || []).map((op) => ({
-        id_operador: op.id_operador,
-        id_policial: Number(op.id_policial),
-        perfil_acesso: op.perfil_acesso,
-        status: op.status,
-        email: op.email,
-        senha: op.senha || '123',
-        ultimo_login: op.ultimo_login,
-        criado_em: op.criado_em,
-      })),
+      operadores: operadoresList,
       cautelas: (cautelasRes.data || []).map((c) => ({
         id_cautela: Number(c.id_cautela),
         id_policial: Number(c.id_policial),
@@ -2803,6 +2942,56 @@ export async function pullAllDataFromSupabase(): Promise<{
         id_alocacao: Number(ai.id_alocacao),
         id_item: Number(ai.id_item),
       })),
+      registrosDisparo: (disparosRes.data || []).map((d) => {
+        const pol = policiaisList.find((p) => p.id_policial === Number(d.id_policial));
+        const op = operadoresList.find((o) => o.id_operador === d.id_operador);
+        const polOp = op ? policiaisList.find((p) => p.id_policial === op.id_policial) : null;
+        return {
+          id_disparo: Number(d.id_disparo),
+          data_registro: d.data_registro || new Date().toISOString(),
+          data_fato: d.data_fato,
+          id_policial: Number(d.id_policial),
+          policial_nome: pol ? pol.nome_completo : `Policial #${d.id_policial}`,
+          policial_grad: pol ? pol.patente : '',
+          policial_matricula: pol ? pol.matricula : '',
+          id_cautela: d.id_cautela ? Number(d.id_cautela) : null,
+          calibre: d.calibre,
+          id_lote: d.id_lote ? Number(d.id_lote) : null,
+          qtd_disparada: Number(d.qtd_disparada),
+          qtd_reposta: Number(d.qtd_reposta),
+          estojos_recolhidos: Boolean(d.estojos_recolhidos),
+          qtd_estojos_recolhidos: d.qtd_estojos_recolhidos != null ? Number(d.qtd_estojos_recolhidos) : 0,
+          numero_bo_ipm: d.numero_bo_ipm,
+          local_fato: d.local_fato,
+          historico_circunstanciado: d.historico_circunstanciado,
+          id_operador: d.id_operador,
+          operador_nome: polOp ? `${polOp.patente} ${polOp.nome_guerra}` : (op?.email || 'Armeiro Responsável'),
+        };
+      }),
+      registrosExtravio: (extraviosRes.data || []).map((e) => {
+        const pol = e.id_policial ? policiaisList.find((p) => p.id_policial === Number(e.id_policial)) : null;
+        const op = e.id_operador ? operadoresList.find((o) => o.id_operador === e.id_operador) : null;
+        const polOp = op ? policiaisList.find((p) => p.id_policial === op.id_policial) : null;
+        const dadosItens = e.dados_itens || {};
+        return {
+          id_extravio: Number(e.id_extravio),
+          data_registro: e.data_registro || new Date().toISOString(),
+          data_fato: e.data_fato,
+          id_policial: e.id_policial ? Number(e.id_policial) : null,
+          policial_nome: pol?.nome_completo,
+          policial_grad: pol?.patente,
+          policial_matricula: pol?.matricula,
+          id_cautela: e.id_cautela ? Number(e.id_cautela) : null,
+          numero_bo_ipm: e.numero_bo_ipm,
+          tipo_ocorrencia: e.tipo_ocorrencia,
+          itens_extraviados: dadosItens.itens_extraviados || [],
+          municoes_extraviadas: dadosItens.municoes_extraviadas || [],
+          historico_circunstanciado: e.historico_circunstanciado,
+          providencias_adotadas: e.providencias_adotadas,
+          id_operador: e.id_operador,
+          operador_nome: polOp ? `${polOp.patente} ${polOp.nome_guerra}` : (op?.email || 'Armeiro Responsável'),
+        };
+      }),
       auditoriaLogs: (auditoriaRes.data || []).map((aud) => ({
         id_log: String(aud.id_auditoria || aud.id_log || `aud-${Math.random()}`),
         acao: aud.acao,
@@ -2817,7 +3006,7 @@ export async function pullAllDataFromSupabase(): Promise<{
     return {
       success: true,
       data: payload,
-      message: `Dados baixados com sucesso do Supabase PostgreSQL: ${payload.itens.length} itens, ${payload.policiais.length} policiais.`,
+      message: `Dados baixados com sucesso do Supabase PostgreSQL: ${payload.itens.length} itens, ${payload.policiais.length} policiais, ${payload.registrosDisparo.length} disparos, ${payload.registrosExtravio.length} extravios.`,
     };
   } catch (err: any) {
     return {

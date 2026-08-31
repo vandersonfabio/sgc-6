@@ -106,6 +106,18 @@ function save<T>(key: string, data: T) {
   }
 }
 
+/**
+ * Calcula a quantidade de dias corridos em manutenção com base na data de início.
+ */
+export function calcularDiasManutencao(dataInicio?: string | null): number {
+  if (!dataInicio) return 0;
+  const inicio = new Date(dataInicio).getTime();
+  if (isNaN(inicio)) return 0;
+  const agora = Date.now();
+  const diffMs = Math.max(0, agora - inicio);
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
 // In-memory Database state with subscribers for Reactivity
 export class DatabaseEngine {
   private unidades: Unidade[];
@@ -371,6 +383,8 @@ export class DatabaseEngine {
       cautelaEstoque: this.cautelaEstoque,
       alocacoes: this.alocacoes,
       alocacaoItens: this.alocacaoItens,
+      registrosDisparo: this.registrosDisparo,
+      registrosExtravio: this.registrosExtravio,
       auditoriaLogs: this.auditoriaLogs,
     });
 
@@ -392,9 +406,9 @@ export class DatabaseEngine {
     this.notify();
     const res = await pullAllDataFromSupabase();
     if (res.success && res.data) {
-      if (res.data.unidades && res.data.unidades.length > 0) this.unidades = res.data.unidades;
-      if (res.data.policiais && res.data.policiais.length > 0) this.policiais = res.data.policiais;
-      if (res.data.operadores && res.data.operadores.length > 0) this.operadores = res.data.operadores;
+      if (res.data.unidades !== undefined) this.unidades = res.data.unidades;
+      if (res.data.policiais !== undefined) this.policiais = res.data.policiais;
+      if (res.data.operadores !== undefined) this.operadores = res.data.operadores;
       if (res.data.tiposMateriais !== undefined) this.tiposMateriais = res.data.tiposMateriais;
       this.itens = res.data.itens || [];
       this.detalheArma = res.data.detalheArma || [];
@@ -404,12 +418,14 @@ export class DatabaseEngine {
       this.detalheViatura = res.data.detalheViatura || [];
       this.detalheInformatica = res.data.detalheInformatica || [];
       this.lotes = res.data.lotes || [];
-      if (res.data.cautelas) this.cautelas = res.data.cautelas;
-      if (res.data.cautelaItens) this.cautelaItens = res.data.cautelaItens;
-      if (res.data.cautelaEstoque) this.cautelaEstoque = res.data.cautelaEstoque;
-      if (res.data.alocacoes) this.alocacoes = res.data.alocacoes;
-      if (res.data.alocacaoItens) this.alocacaoItens = res.data.alocacaoItens;
-      if (res.data.auditoriaLogs && res.data.auditoriaLogs.length > 0) this.auditoriaLogs = res.data.auditoriaLogs;
+      this.cautelas = res.data.cautelas || [];
+      this.cautelaItens = res.data.cautelaItens || [];
+      this.cautelaEstoque = res.data.cautelaEstoque || [];
+      this.alocacoes = res.data.alocacoes || [];
+      this.alocacaoItens = res.data.alocacaoItens || [];
+      this.registrosDisparo = res.data.registrosDisparo || [];
+      this.registrosExtravio = res.data.registrosExtravio || [];
+      if (res.data.auditoriaLogs !== undefined) this.auditoriaLogs = res.data.auditoriaLogs;
 
       this.reconciliarStatusItens();
       this.persistAll();
@@ -431,9 +447,9 @@ export class DatabaseEngine {
     try {
       const res = await pullAllDataFromSupabase();
       if (res.success && res.data) {
-        if (res.data.unidades && res.data.unidades.length > 0) this.unidades = res.data.unidades;
-        if (res.data.policiais && res.data.policiais.length > 0) this.policiais = res.data.policiais;
-        if (res.data.operadores && res.data.operadores.length > 0) this.operadores = res.data.operadores;
+        if (res.data.unidades !== undefined) this.unidades = res.data.unidades;
+        if (res.data.policiais !== undefined) this.policiais = res.data.policiais;
+        if (res.data.operadores !== undefined) this.operadores = res.data.operadores;
         if (res.data.tiposMateriais !== undefined) this.tiposMateriais = res.data.tiposMateriais;
         this.itens = res.data.itens || [];
         this.detalheArma = res.data.detalheArma || [];
@@ -443,12 +459,14 @@ export class DatabaseEngine {
         this.detalheViatura = res.data.detalheViatura || [];
         this.detalheInformatica = res.data.detalheInformatica || [];
         this.lotes = res.data.lotes || [];
-        if (res.data.cautelas) this.cautelas = res.data.cautelas;
-        if (res.data.cautelaItens) this.cautelaItens = res.data.cautelaItens;
-        if (res.data.cautelaEstoque) this.cautelaEstoque = res.data.cautelaEstoque;
-        if (res.data.alocacoes) this.alocacoes = res.data.alocacoes;
-        if (res.data.alocacaoItens) this.alocacaoItens = res.data.alocacaoItens;
-        if (res.data.auditoriaLogs && res.data.auditoriaLogs.length > 0) this.auditoriaLogs = res.data.auditoriaLogs;
+        this.cautelas = res.data.cautelas || [];
+        this.cautelaItens = res.data.cautelaItens || [];
+        this.cautelaEstoque = res.data.cautelaEstoque || [];
+        this.alocacoes = res.data.alocacoes || [];
+        this.alocacaoItens = res.data.alocacaoItens || [];
+        this.registrosDisparo = res.data.registrosDisparo || [];
+        this.registrosExtravio = res.data.registrosExtravio || [];
+        if (res.data.auditoriaLogs !== undefined) this.auditoriaLogs = res.data.auditoriaLogs;
 
         this.reconciliarStatusItens();
         this.persistAll();
@@ -1810,7 +1828,12 @@ export class DatabaseEngine {
         const tipo = this.getTipoMaterialById(itemFinal.id_tipo_material);
         if (tipo) {
           itemFinal.modulo = tipo.modulo;
-          itemFinal.tipo_item = tipo.nome;
+          // Retain custom description/name entered by the user, only defaulting to tipo.nome if empty
+          if (!itemFinal.tipo_item || !itemFinal.tipo_item.trim()) {
+            itemFinal.tipo_item = tipo.nome;
+          } else {
+            itemFinal.tipo_item = itemFinal.tipo_item.trim();
+          }
 
           if (tipo.exige_numero_serie && (!itemFinal.numero_serie || !itemFinal.numero_serie.trim())) {
             return { success: false, error: `Número de série é obrigatório para "${tipo.nome}".` };
@@ -1881,9 +1904,17 @@ export class DatabaseEngine {
       }
 
       const nextId = Math.max(0, ...this.itens.map((i) => i.id_item)) + 1;
+      
+      // Auto-set data_inicio_manutencao if created directly in maintenance
+      let dataInicioManutencao = itemFinal.data_inicio_manutencao;
+      if ((itemFinal.status === 'Manutenção' || itemFinal.status === 'Danificado / Avariado') && !dataInicioManutencao) {
+        dataInicioManutencao = new Date().toISOString();
+      }
+
       const novoItem: ItemPatrimonio = {
         ...itemFinal,
         id_item: nextId,
+        data_inicio_manutencao: dataInicioManutencao,
       };
       this.itens.push(novoItem);
 
@@ -2183,9 +2214,32 @@ export class DatabaseEngine {
         }
       }
 
+      const itemAnterior = this.itens[itemIdx];
+      let novaDataManutencao = itemDados.data_inicio_manutencao;
+      let novoMotivoManutencao = itemDados.motivo_manutencao;
+
+      // If status changed to Manutenção or Danificado and no date provided
+      if (itemDados.status === 'Manutenção' || itemDados.status === 'Danificado / Avariado') {
+        if (!novaDataManutencao && !itemAnterior.data_inicio_manutencao) {
+          novaDataManutencao = new Date().toISOString();
+        } else if (!novaDataManutencao) {
+          novaDataManutencao = itemAnterior.data_inicio_manutencao;
+        }
+      } else if (itemDados.status && ['Disponível', 'Alocado', 'Cautelado', 'Baixado', 'Descarregado'].includes(itemDados.status)) {
+        // Clear maintenance metadata when restored to available/allocated/cautelado
+        if (itemDados.data_inicio_manutencao === undefined) {
+          novaDataManutencao = null;
+        }
+        if (itemDados.motivo_manutencao === undefined) {
+          novoMotivoManutencao = null;
+        }
+      }
+
       this.itens[itemIdx] = {
-        ...this.itens[itemIdx],
+        ...itemAnterior,
         ...itemDados,
+        data_inicio_manutencao: novaDataManutencao !== undefined ? novaDataManutencao : itemAnterior.data_inicio_manutencao,
+        motivo_manutencao: novoMotivoManutencao !== undefined ? novoMotivoManutencao : itemAnterior.motivo_manutencao,
       };
 
       if (detalhes?.arma) {
@@ -2712,8 +2766,15 @@ export function useDatabase() {
   const perfil = currentOpInfo.operador.perfil_acesso;
 
   // RBAC checks
+  const isComandante = perfil === 'Comandante';
+  const isReadOnly = perfil === 'Comandante';
+  const isSuperuser = perfil === 'Superuser';
+  const isP4 = perfil === 'P4';
+  const isArmeiro = perfil === 'Armeiro';
+  const isRadio = perfil === 'Rádio';
+
   const canAccessModule = (mod: ModuloTipo): boolean => {
-    if (perfil === 'Superuser' || perfil === 'P4') return true;
+    if (perfil === 'Superuser' || perfil === 'P4' || perfil === 'Comandante') return true;
     if (perfil === 'Armeiro') return mod === 'Armas';
     if (perfil === 'Rádio') return mod === 'Comunicação';
     return false;
@@ -2723,7 +2784,22 @@ export function useDatabase() {
   const canManageEfetivo = perfil === 'Superuser' || perfil === 'P4';
   const canPerformAlocacao = perfil === 'Superuser' || perfil === 'P4';
   const canManageUnidades = perfil === 'Superuser';
-  const isSuperuser = perfil === 'Superuser';
+
+  const canCreateOrEditItems = (mod?: ModuloTipo): boolean => {
+    if (isReadOnly) return false;
+    if (isSuperuser || isP4) return true;
+    if (isArmeiro) return !mod || mod === 'Armas';
+    if (isRadio) return !mod || mod === 'Comunicação';
+    return false;
+  };
+
+  const canManageCautelas = (mod?: ModuloTipo): boolean => {
+    if (isReadOnly) return false;
+    if (isSuperuser || isP4) return true;
+    if (isArmeiro) return !mod || mod === 'Armas';
+    if (isRadio) return !mod || mod === 'Comunicação';
+    return false;
+  };
 
   const currentOperator = {
     ...currentOpInfo.operador,
@@ -2744,11 +2820,18 @@ export function useDatabase() {
     currentPolicial: currentOpInfo.policial,
     perfil,
     isSuperuser,
+    isP4,
+    isArmeiro,
+    isRadio,
+    isComandante,
+    isReadOnly,
     canAccessModule,
     canManageOperadores,
     canManageEfetivo,
     canPerformAlocacao,
     canManageUnidades,
+    canCreateOrEditItems,
+    canManageCautelas,
     unidades: db.getUnidades(),
     policiais: db.getPoliciais(),
     operadores: db.getOperadores(),

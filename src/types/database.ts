@@ -6,7 +6,7 @@
 export type ModuloTipo = 'Armas' | 'Comunicação' | 'Viaturas' | 'Informática' | 'Móveis e Diversos';
 export type ModoTipo = ModuloTipo;
 
-export type PerfilAcesso = 'Superuser' | 'P4' | 'Armeiro' | 'Rádio';
+export type PerfilAcesso = 'Superuser' | 'P4' | 'Armeiro' | 'Rádio' | 'Comandante';
 
 export type StatusItem =
   | 'Disponível'
@@ -123,6 +123,8 @@ export interface ItemPatrimonio {
   numero_tombo?: string | null;
   status: StatusItem;
   observacao?: string | null;
+  data_inicio_manutencao?: string | null;
+  motivo_manutencao?: string | null;
 }
 
 export interface EstoqueLote {

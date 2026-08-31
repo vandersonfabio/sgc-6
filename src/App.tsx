@@ -11,14 +11,13 @@ import { OperadoresView } from './components/views/OperadoresView';
 import { UnidadesView } from './components/views/UnidadesView';
 import { CatalogoMateriaisView } from './components/views/CatalogoMateriaisView';
 import { AuditoriaView } from './components/views/AuditoriaView';
-import { SupabaseSqlView } from './components/views/SupabaseSqlView';
 import { LoginView } from './components/auth/LoginView';
 import { useDatabase } from './services/store';
 import { ShieldAlert, Lock, ArrowLeft } from 'lucide-react';
 import { ModuloTipo } from './types/database';
 
 export default function App() {
-  const { isAuthenticated, currentOperator, canAccessModule, canManageOperadores, isSuperuser, canManageUnidades } = useDatabase();
+  const { isAuthenticated, currentOperator, canAccessModule, canManageOperadores, isSuperuser, canManageUnidades, isComandante } = useDatabase();
   const [activeTab, setActiveTab] = useState<TabId>('armas');
 
   // Automatic adjustment if current operator doesn't have access to default 'armas' tab (e.g. Radio operator)
@@ -26,13 +25,13 @@ export default function App() {
     if (currentOperator.tipo_perfil === 'Rádio' && activeTab === 'armas') {
       setActiveTab('comunicacao');
     }
-    if (activeTab === 'unidades' && !isSuperuser && !canManageUnidades) {
+    if (activeTab === 'unidades' && !isSuperuser && !canManageUnidades && !isComandante) {
       setActiveTab('armas');
     }
     if (activeTab === 'operadores' && !canManageOperadores) {
       setActiveTab('armas');
     }
-  }, [currentOperator, activeTab, isSuperuser, canManageUnidades, canManageOperadores]);
+  }, [currentOperator, activeTab, isSuperuser, canManageUnidades, canManageOperadores, isComandante]);
 
   // If not authenticated, present the institutional Login view
   if (!isAuthenticated) {
@@ -48,7 +47,7 @@ export default function App() {
   else if (activeTab === 'informatica') moduleName = 'Informática';
   else if (activeTab === 'moveis') moduleName = 'Móveis e Diversos';
 
-  const isUnidadesRestricted = activeTab === 'unidades' && !isSuperuser && !canManageUnidades;
+  const isUnidadesRestricted = activeTab === 'unidades' && !isSuperuser && !canManageUnidades && !isComandante;
   const isOperadoresRestricted = activeTab === 'operadores' && !canManageOperadores;
   const hasAccess = (!moduleName || canAccessModule(moduleName)) && !isUnidadesRestricted && !isOperadoresRestricted;
 
@@ -104,7 +103,6 @@ export default function App() {
               {activeTab === 'operadores' && <OperadoresView />}
               {activeTab === 'unidades' && <UnidadesView />}
               {activeTab === 'auditoria' && <AuditoriaView />}
-              {activeTab === 'supabase_sql' && <SupabaseSqlView />}
             </>
           )}
         </main>

@@ -46,7 +46,12 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
       } else if (selectedTipo.modo_controle === 'INDIVIDUAL') {
         setTabType('individual');
       }
-      setTipoItem(selectedTipo.nome);
+      setTipoItem((prev) => {
+        if (!prev || tiposMateriais.some((t) => t.nome === prev)) {
+          return selectedTipo.nome;
+        }
+        return prev;
+      });
     }
   }, [selectedTipoId]);
 

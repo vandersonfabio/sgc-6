@@ -105,7 +105,8 @@ ON CONFLICT (id_tipo_material) DO UPDATE SET
 SELECT setval(pg_get_serial_sequence('tipo_material', 'id_tipo_material'), COALESCE(MAX(id_tipo_material), 1) + 1, false) FROM tipo_material;`;
 
 export const CatalogoMateriaisView: React.FC = () => {
-  const { db, tiposMateriais, isSuperuser, canManageUnidades } = useDatabase();
+  const { db, tiposMateriais, isSuperuser, canManageUnidades, isComandante } = useDatabase();
+  const canEditCatalog = isSuperuser || canManageUnidades;
 
   const [filterModulo, setFilterModulo] = useState<string>('todos');
   const [filterModo, setFilterModo] = useState<string>('todos');
@@ -336,7 +337,7 @@ export const CatalogoMateriaisView: React.FC = () => {
           </button>
 
           {/* Semear Padrão */}
-          {tiposMateriais.length < 25 && (
+          {canEditCatalog && tiposMateriais.length < 25 && (
             <button
               onClick={handleSemearCatalogo}
               disabled={isSeeding}
@@ -349,13 +350,15 @@ export const CatalogoMateriaisView: React.FC = () => {
           )}
 
           {/* Novo Tipo */}
-          <button
-            onClick={handleOpenCreate}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Novo Tipo</span>
-          </button>
+          {canEditCatalog && (
+            <button
+              onClick={handleOpenCreate}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Novo Tipo</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -567,20 +570,26 @@ export const CatalogoMateriaisView: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3 px-4 text-right space-x-1.5">
-                        <button
-                          onClick={() => handleOpenEdit(tipo)}
-                          className="p-1.5 rounded hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition"
-                          title="Editar Parâmetros"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(tipo.id_tipo_material, tipo.nome)}
-                          className="p-1.5 rounded hover:bg-red-100 text-red-600 transition"
-                          title="Excluir Tipo de Material"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEditCatalog ? (
+                          <>
+                            <button
+                              onClick={() => handleOpenEdit(tipo)}
+                              className="p-1.5 rounded hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition"
+                              title="Editar Parâmetros"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(tipo.id_tipo_material, tipo.nome)}
+                              className="p-1.5 rounded hover:bg-red-100 text-red-600 transition"
+                              title="Excluir Tipo de Material"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                        )}
                       </td>
                     </tr>
                   );

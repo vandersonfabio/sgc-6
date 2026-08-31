@@ -24,7 +24,7 @@ import { ModalEditarUnidade } from '../unidades/ModalEditarUnidade';
 import { PdfReportService } from '../../services/pdfReportService';
 
 export const UnidadesView: React.FC = () => {
-  const { db, unidades, policiais, isSuperuser } = useDatabase();
+  const { db, unidades, policiais, isSuperuser, canManageUnidades } = useDatabase();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTipo, setFilterTipo] = useState<string>('TODOS');
@@ -125,13 +125,15 @@ export const UnidadesView: React.FC = () => {
             <FileDown className="w-4 h-4 text-red-600" />
             <span>Relatório PDF</span>
           </button>
-          <button
-            onClick={() => setShowNovoModal(true)}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-sm shadow-blue-900/30 transition focus:ring-2 focus:ring-blue-900"
-          >
-            <Plus className="w-4 h-4 text-amber-400" />
-            <span>Nova Unidade / Setor</span>
-          </button>
+          {canManageUnidades && (
+            <button
+              onClick={() => setShowNovoModal(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-sm shadow-blue-900/30 transition focus:ring-2 focus:ring-blue-900"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>Nova Unidade / Setor</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -349,30 +351,34 @@ export const UnidadesView: React.FC = () => {
 
                   {/* Ações */}
                   <td className="p-3.5 text-right whitespace-nowrap">
-                    <div className="flex items-center justify-end space-x-1.5">
-                      <button
-                        onClick={() => setSelectedUnidadeEdit(u)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
-                        title="Editar Unidade / Setor"
-                      >
-                        <Edit className="w-3.5 h-3.5 text-blue-800" />
-                        <span>Editar</span>
-                      </button>
-
-                      {u.id_unidade !== 1 && (
+                    {canManageUnidades ? (
+                      <div className="flex items-center justify-end space-x-1.5">
                         <button
-                          onClick={() => {
-                            setDeleteError(null);
-                            setUnidadeParaExcluir(u);
-                          }}
-                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition"
-                          title="Excluir Unidade"
+                          onClick={() => setSelectedUnidadeEdit(u)}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+                          title="Editar Unidade / Setor"
                         >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                          <span>Excluir</span>
+                          <Edit className="w-3.5 h-3.5 text-blue-800" />
+                          <span>Editar</span>
                         </button>
-                      )}
-                    </div>
+
+                        {u.id_unidade !== 1 && (
+                          <button
+                            onClick={() => {
+                              setDeleteError(null);
+                              setUnidadeParaExcluir(u);
+                            }}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition"
+                            title="Excluir Unidade"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Excluir</span>
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                    )}
                   </td>
                 </tr>
               );

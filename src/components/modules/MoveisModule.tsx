@@ -48,7 +48,8 @@ type SortField = 'tombo_serie' | 'tipo' | 'marca_modelo' | 'observacao' | 'statu
 type SortDirection = 'asc' | 'desc';
 
 export const MoveisModule: React.FC = () => {
-  const { db, canPerformAlocacao } = useDatabase();
+  const { db, canPerformAlocacao, canCreateOrEditItems } = useDatabase();
+  const canCreateOrEdit = canCreateOrEditItems('Móveis e Diversos');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Disponível' | 'Alocado' | 'Manutenção'>('Todos');
@@ -235,7 +236,7 @@ export const MoveisModule: React.FC = () => {
             <span>Relatório PDF</span>
           </button>
 
-          {canPerformAlocacao && (
+          {canPerformAlocacao && canCreateOrEdit && (
             <button
               onClick={() => setShowNovaAlocacaoModal(true)}
               className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition focus:ring-2 focus:ring-indigo-500 cursor-pointer"
@@ -245,13 +246,15 @@ export const MoveisModule: React.FC = () => {
             </button>
           )}
 
-          <button
-            onClick={() => setShowNovoItemModal(true)}
-            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Cadastrar Mobiliário</span>
-          </button>
+          {canCreateOrEdit && (
+            <button
+              onClick={() => setShowNovoItemModal(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Cadastrar Mobiliário</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -586,39 +589,43 @@ export const MoveisModule: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 text-right">
-                      <div className="flex items-center justify-end space-x-1.5">
-                        {/* Realocação Individual */}
-                        {canPerformAlocacao && (
+                      {canCreateOrEdit ? (
+                        <div className="flex items-center justify-end space-x-1.5">
+                          {/* Realocação Individual */}
+                          {canPerformAlocacao && (
+                            <button
+                              onClick={() => setSelectedItemRealocar(it)}
+                              className="inline-flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
+                              title="Realocar bem individualmente (para outra unidade ou retorno à sede)"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Realocar</span>
+                            </button>
+                          )}
+
                           <button
-                            onClick={() => setSelectedItemRealocar(it)}
-                            className="inline-flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
-                            title="Realocar bem individualmente (para outra unidade ou retorno à sede)"
+                            onClick={() => setSelectedItemEdit(it)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
+                            title="Editar Bem Patrimonial"
                           >
-                            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Realocar</span>
+                            <Edit className="w-3.5 h-3.5 text-purple-700" />
+                            <span>Editar</span>
                           </button>
-                        )}
 
-                        <button
-                          onClick={() => setSelectedItemEdit(it)}
-                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
-                          title="Editar Bem Patrimonial"
-                        >
-                          <Edit className="w-3.5 h-3.5 text-purple-700" />
-                          <span>Editar</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setErroExclusao(null);
-                            setItemParaExcluir(it);
-                          }}
-                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
-                          title="Excluir Bem Patrimonial do Sistema"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => {
+                              setErroExclusao(null);
+                              setItemParaExcluir(it);
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
+                            title="Excluir Bem Patrimonial do Sistema"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                      )}
                     </td>
                   </tr>
                 ))

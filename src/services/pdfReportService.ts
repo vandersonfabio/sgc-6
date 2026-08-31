@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { DatabaseEngine } from './store';
+import { DatabaseEngine, calcularDiasManutencao } from './store';
 import { ModuloTipo } from '../types/database';
 
 export class PdfReportService {
@@ -323,12 +323,19 @@ export class PdfReportService {
       // Conforme solicitado: Não precisa mostrar no relatório o usuário que fez a alocação
       const destino = aloc ? aloc.unidade.nome : 'Pátio 6º BPM (Sede)';
 
+      let statusLabel: string = it.status;
+      if (it.status === 'Manutenção' || it.status === 'Danificado / Avariado') {
+        const dias = calcularDiasManutencao(it.data_inicio_manutencao);
+        const diasStr = dias === 0 ? 'Entrada Hoje' : dias === 1 ? '1 dia' : `${dias} dias`;
+        statusLabel = `${it.status} (${diasStr})${it.motivo_manutencao ? ` - ${it.motivo_manutencao}` : ''}`;
+      }
+
       return [
         vtr?.prefixo || 'VTR-0600',
         vtr?.placa || '-',
         it.tipo_item,
         `${it.marca || ''} ${it.modelo || ''}`.trim(),
-        it.status,
+        statusLabel,
         destino,
       ];
     });

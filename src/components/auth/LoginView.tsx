@@ -8,34 +8,21 @@ import {
   EyeOff,
   LogIn,
   AlertCircle,
-  CheckCircle2,
-  Database,
-  Building2,
-  HelpCircle,
-  Radio,
-  Crosshair,
-  UserCheck,
-  Server,
-  ExternalLink,
 } from 'lucide-react';
 import { useDatabase } from '../../services/store';
-import { getActiveSupabaseConfig, testSupabaseConnection } from '../../services/supabaseClient';
+import { getActiveSupabaseConfig } from '../../services/supabaseClient';
 
 interface LoginViewProps {
   onLoginSuccess?: () => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
-  const { login, db } = useDatabase();
+  const { login } = useDatabase();
   const [identificador, setIdentificador] = useState('');
   const [senha, setSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
-
-  const supabaseConfig = getActiveSupabaseConfig();
-  const operadores = db.getOperadores();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,12 +52,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       setIsLoading(false);
       setErrorMessage(err.message || 'Erro de comunicação ao autenticar.');
     }
-  };
-
-  const handleSelectQuickAccount = (email: string, initialPass: string = '123') => {
-    setIdentificador(email);
-    setSenha(initialPass);
-    setErrorMessage(null);
   };
 
   return (
@@ -146,13 +127,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     type="text"
                     value={identificador}
                     onChange={(e) => setIdentificador(e.target.value)}
-                    placeholder="Matrícula PM"
+                    placeholder="Matrícula PM ou E-mail institucional"
                     required
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 pl-1">
-                  Ex: <code>1984201</code>
+                  Ex: <code>1984201</code> ou <code>armeiro.6bpm@pm.rn.gov.br</code>
                 </p>
               </div>
 
@@ -162,7 +143,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <label className="block text-xs font-semibold text-slate-300">
                     Senha de Acesso <span className="text-red-400">*</span>
                   </label>
-                  <span className="text-[10px] text-slate-400">Padrão inicial: 123</span>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -180,7 +160,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition"
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition cursor-pointer"
                     title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -194,7 +174,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   id="btn-login-submit"
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
                 >
                   {isLoading ? (
                     <>
@@ -210,55 +190,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 </button>
               </div>
             </form>
-
-            {/* Quick Demo Access Toggle */}
-            <div className="mt-5 pt-4 border-t border-slate-800 text-center">
-              <button
-                type="button"
-                onClick={() => setShowDemoAccounts(!showDemoAccounts)}
-                className="text-xs text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1.5 transition"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-                <span>{showDemoAccounts ? 'Ocultar Perfis de Demonstração' : 'Ver Perfis de Demonstração (1-Clique)'}</span>
-              </button>
-
-              {/* Demo Accounts List */}
-              {showDemoAccounts && (
-                <div className="mt-3 space-y-1.5 text-left bg-slate-950/70 p-3 rounded-xl border border-slate-800 animate-in fade-in">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">
-                    Selecione para preencher automaticamente:
-                  </p>
-                  {operadores.map(({ operador, policial }) => (
-                    <button
-                      key={operador.id_operador}
-                      type="button"
-                      onClick={() => handleSelectQuickAccount(operador.email || '', operador.senha || '123')}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-left flex items-center justify-between text-xs transition"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <div className="p-1 rounded bg-slate-800 text-blue-400">
-                          {operador.perfil_acesso === 'Superuser' && <Shield className="w-3 h-3" />}
-                          {operador.perfil_acesso === 'P4' && <UserCheck className="w-3 h-3" />}
-                          {operador.perfil_acesso === 'Armeiro' && <Crosshair className="w-3 h-3" />}
-                          {operador.perfil_acesso === 'Rádio' && <Radio className="w-3 h-3" />}
-                        </div>
-                        <div className="truncate">
-                          <span className="font-semibold text-slate-200">
-                            {policial.patente} {policial.nome_guerra}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block truncate">
-                            {operador.email}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold ml-2">
-                        {operador.perfil_acesso}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Institutional Security Notice */}

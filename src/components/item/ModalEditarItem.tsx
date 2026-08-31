@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useDatabase } from '../../services/store';
+import { useDatabase, calcularDiasManutencao } from '../../services/store';
 import { ItemComDetalhes, StatusItem, ModuloTipo } from '../../types/database';
 import {
   X,
@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Trash2,
   Info,
+  Wrench,
+  Clock,
 } from 'lucide-react';
 
 interface ModalEditarItemProps {
@@ -43,6 +45,12 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
   const [numeroTombo, setNumeroTombo] = useState(item.numero_tombo || '');
   const [status, setStatus] = useState<StatusItem>(item.status);
   const [observacao, setObservacao] = useState(item.observacao || '');
+  const [dataInicioManutencao, setDataInicioManutencao] = useState(
+    item.data_inicio_manutencao
+      ? item.data_inicio_manutencao.slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+  );
+  const [motivoManutencao, setMotivoManutencao] = useState(item.motivo_manutencao || '');
 
   // Detalhe Arma
   const [calibre, setCalibre] = useState(item.detalhe_arma?.calibre || '9mm');
@@ -102,6 +110,8 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
       }
     }
 
+    const isManutencao = status === 'Manutenção' || status === 'Danificado / Avariado';
+
     const itemDados = {
       id_tipo_material: selectedTipo?.id_tipo_material || item.id_tipo_material || null,
       tipo_item: tipoItem,
@@ -111,6 +121,10 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
       numero_tombo: isViatura || selectedTipo?.permite_numero_tombo === false ? null : numeroTombo.trim() || null,
       status,
       observacao: observacao || null,
+      data_inicio_manutencao: isManutencao
+        ? (dataInicioManutencao ? new Date(dataInicioManutencao + 'T12:00:00Z').toISOString() : new Date().toISOString())
+        : null,
+      motivo_manutencao: isManutencao ? (motivoManutencao.trim() || null) : null,
     };
 
     let detalhes: any = {};
@@ -197,7 +211,9 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
                 const val = e.target.value;
                 setSelectedTipoId(val ? Number(val) : '');
                 const t = tiposMateriais.find((tm) => tm.id_tipo_material === Number(val));
-                if (t) setTipoItem(t.nome);
+                if (t) {
+                  setTipoItem((prev) => (!prev || tiposMateriais.some((tm) => tm.nome === prev) ? t.nome : prev));
+                }
               }}
               className="ml-2 bg-white border border-slate-300 rounded p-1 text-xs font-semibold text-slate-900"
             >
@@ -259,6 +275,73 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
               />
             </div>
           </div>
+
+          {/* Maintenance Details Panel (when status is Manutenção or Danificado) */}
+          {(status === 'Manutenção' || status === 'Danificado / Avariado') && (
+            <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1.5 text-amber-900 font-bold text-xs">
+                  <Wrench className="w-4 h-4 text-amber-700" />
+                  <span>Controle de Manutenção e Oficina</span>
+                </div>
+                {(() => {
+                  const dias = calcularDiasManutencao(dataInicioManutencao);
+                  const isCritico = dias > 30;
+                  const isAtencao = dias > 7 && dias <= 30;
+                  return (
+                    <div
+                      className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                        isCritico
+                          ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                          : isAtencao
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>
+                        {dias === 0 ? 'Entrada Hoje (0 dias)' : dias === 1 ? '1 dia parado' : `${dias} dias em manutenção`}
+                        {isCritico && ' • Crítico (+30d)'}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-800 text-[11px] font-bold mb-1">
+                    Data de Entrada na Manutenção *
+                  </label>
+                  <input
+                    type="date"
+                    value={dataInicioManutencao}
+                    onChange={(e) => setDataInicioManutencao(e.target.value)}
+                    className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-600 shadow-xs"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Utilizada para o cálculo automatizado de tempo de retenção na oficina.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-slate-800 text-[11px] font-bold mb-1">
+                    Oficina / Motivo / Ordem de Serviço (OS)
+                  </label>
+                  <input
+                    type="text"
+                    value={motivoManutencao}
+                    onChange={(e) => setMotivoManutencao(e.target.value)}
+                    placeholder="Ex: Auto Mecânica Seridó • OS #409 (Troca de embreagem)"
+                    className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-amber-600 shadow-xs"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Nome do prestador, número do chamado ou diagnóstico resumido.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

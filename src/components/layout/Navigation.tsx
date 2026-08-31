@@ -27,8 +27,7 @@ export type TabId =
   | 'efetivo'
   | 'operadores'
   | 'unidades'
-  | 'auditoria'
-  | 'supabase_sql';
+  | 'auditoria';
 
 interface NavigationProps {
   activeTab: TabId;
@@ -37,7 +36,7 @@ interface NavigationProps {
 }
 
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, onNovaCautela }) => {
-  const { canAccessModule, canManageEfetivo, canManageOperadores, canManageUnidades, isSuperuser } = useDatabase();
+  const { canAccessModule, canManageEfetivo, canManageOperadores, canManageUnidades, isSuperuser, isComandante } = useDatabase();
 
   interface NavItem {
     id: TabId;
@@ -128,13 +127,6 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, 
       icon: <FileSpreadsheet className="w-3.5 h-3.5" />,
       isModule: false,
     },
-    {
-      id: 'supabase_sql',
-      label: 'Esquema SQL',
-      description: 'DDL e Políticas RLS',
-      icon: <Database className="w-3.5 h-3.5 text-emerald-400" />,
-      isModule: false,
-    },
   ];
 
   // Strictly filter items based on user's profile access
@@ -143,19 +135,16 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, 
       return canManageOperadores;
     }
     if (item.superuserOnly) {
-      return isSuperuser || canManageUnidades;
+      return isSuperuser || canManageUnidades || isComandante;
     }
     if (item.isModule && item.moduleName) {
       return canAccessModule(item.moduleName);
     }
     if (item.id === 'catalogo') {
-      return isSuperuser || canManageUnidades || canManageEfetivo;
+      return isSuperuser || canManageUnidades || canManageEfetivo || isComandante;
     }
     if (item.id === 'efetivo' || item.id === 'auditoria') {
-      return canManageEfetivo;
-    }
-    if (item.id === 'supabase_sql') {
-      return true;
+      return canManageEfetivo || isComandante;
     }
     return false;
   });

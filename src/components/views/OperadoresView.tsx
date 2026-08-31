@@ -5,6 +5,7 @@ import {
   UserCheck,
   Crosshair,
   Radio,
+  Award,
   Plus,
   Search,
   Edit,
@@ -205,6 +206,8 @@ export const OperadoresView: React.FC = () => {
         return 'bg-amber-100 text-amber-800 border-amber-300';
       case 'Rádio':
         return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'Comandante':
+        return 'bg-amber-100 text-amber-900 border-amber-400 font-semibold';
     }
   };
 
@@ -218,6 +221,8 @@ export const OperadoresView: React.FC = () => {
         return <Crosshair className="w-3.5 h-3.5 text-amber-600" />;
       case 'Rádio':
         return <Radio className="w-3.5 h-3.5 text-emerald-600" />;
+      case 'Comandante':
+        return <Award className="w-3.5 h-3.5 text-amber-600" />;
     }
   };
 
@@ -306,6 +311,7 @@ export const OperadoresView: React.FC = () => {
             <option value="P4">P4 (Logística e Cautelas)</option>
             <option value="Armeiro">Armeiro (Módulo Armas)</option>
             <option value="Rádio">Rádio (Módulo Comunicação)</option>
+            <option value="Comandante">Comandante (Visualização Geral / Leitura)</option>
           </select>
         </div>
       </div>
@@ -503,6 +509,7 @@ export const OperadoresView: React.FC = () => {
                     <option value="Armeiro">Armeiro (Módulo Armas)</option>
                     <option value="Rádio">Rádio (Módulo Comunicação)</option>
                     <option value="P4">P4 (Gestor Logístico Geral)</option>
+                    <option value="Comandante">Comandante (Visualização Geral / Somente Leitura)</option>
                     {isSuperuser && <option value="Superuser">Superuser (Administrador)</option>}
                   </select>
                 </div>
@@ -604,6 +611,7 @@ export const OperadoresView: React.FC = () => {
                     <option value="Armeiro">Armeiro (Módulo Armas)</option>
                     <option value="Rádio">Rádio (Módulo Comunicação)</option>
                     <option value="P4">P4 (Gestor Logístico Geral)</option>
+                    <option value="Comandante">Comandante (Visualização Geral / Somente Leitura)</option>
                     {isSuperuser && <option value="Superuser">Superuser (Administrador)</option>}
                   </select>
                 </div>

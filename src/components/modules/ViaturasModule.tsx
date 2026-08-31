@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useDatabase } from '../../services/store';
+import { useDatabase, calcularDiasManutencao } from '../../services/store';
 import {
   Truck,
   Building2,
@@ -19,6 +19,7 @@ import {
   BarChart3,
   ShieldCheck,
   Wrench,
+  Clock,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -41,11 +42,12 @@ import { ModalEditarItem } from '../item/ModalEditarItem';
 import { PdfReportService } from '../../services/pdfReportService';
 import { ItemComDetalhes } from '../../types/database';
 
-type SortField = 'prefixo' | 'placa' | 'tipo' | 'marca_modelo' | 'status' | 'lotacao';
+type SortField = 'prefixo' | 'placa' | 'tipo' | 'marca_modelo' | 'status' | 'lotacao' | 'dias_manutencao';
 type SortDirection = 'asc' | 'desc';
 
 export const ViaturasModule: React.FC = () => {
-  const { db, canPerformAlocacao } = useDatabase();
+  const { db, canPerformAlocacao, canCreateOrEditItems } = useDatabase();
+  const canCreateOrEdit = canCreateOrEditItems('Viaturas');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Disponível' | 'Alocado' | 'Manutenção'>('Todos');
@@ -66,9 +68,14 @@ export const ViaturasModule: React.FC = () => {
   const totalFrota = allItens.length;
   const viaturasAlocadas = allItens.filter((i) => i.status === 'Alocado').length;
   const viaturasDisponiveis = allItens.filter((i) => i.status === 'Disponível').length;
-  const viaturasManutencao = allItens.filter(
+  const viaturasEmManut = allItens.filter(
     (i) => i.status === 'Manutenção' || i.status === 'Danificado / Avariado'
-  ).length;
+  );
+  const viaturasManutencao = viaturasEmManut.length;
+  const maxDiasManut = viaturasEmManut.reduce(
+    (max, it) => Math.max(max, calcularDiasManutencao(it.data_inicio_manutencao)),
+    0
+  );
 
   const filteredItens = allItens.filter((i) => {
     if (statusFilter !== 'Todos') {
@@ -115,6 +122,11 @@ export const ViaturasModule: React.FC = () => {
         valA = a.status || '';
         valB = b.status || '';
         break;
+      case 'dias_manutencao': {
+        const diasA = (a.status === 'Manutenção' || a.status === 'Danificado / Avariado') ? calcularDiasManutencao(a.data_inicio_manutencao) : -1;
+        const diasB = (b.status === 'Manutenção' || b.status === 'Danificado / Avariado') ? calcularDiasManutencao(b.data_inicio_manutencao) : -1;
+        return sortDirection === 'asc' ? diasA - diasB : diasB - diasA;
+      }
       case 'lotacao':
         valA = a.alocacao_atual?.unidade_nome || 'Pátio da Sede (Caicó)';
         valB = b.alocacao_atual?.unidade_nome || 'Pátio da Sede (Caicó)';
@@ -234,7 +246,7 @@ export const ViaturasModule: React.FC = () => {
             <span>Relatório PDF</span>
           </button>
 
-          {canPerformAlocacao && (
+          {canPerformAlocacao && canCreateOrEdit && (
             <button
               onClick={() => setShowNovaAlocacaoModal(true)}
               className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition focus:ring-2 focus:ring-indigo-500 cursor-pointer"
@@ -243,13 +255,15 @@ export const ViaturasModule: React.FC = () => {
               <span>ALOCAR EM UNIDADE</span>
             </button>
           )}
-          <button
-            onClick={() => setShowNovoItemModal(true)}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-sm shadow-amber-600/30 transition cursor-pointer"
-          >
-            <Package className="w-4 h-4" />
-            <span>Cadastrar Viatura</span>
-          </button>
+          {canCreateOrEdit && (
+            <button
+              onClick={() => setShowNovoItemModal(true)}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-sm shadow-amber-600/30 transition cursor-pointer"
+            >
+              <Package className="w-4 h-4" />
+              <span>Cadastrar Viatura</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -311,7 +325,11 @@ export const ViaturasModule: React.FC = () => {
           </div>
           <div className="mt-2">
             <div className="text-3xl font-black text-rose-600 tracking-tight">{viaturasManutencao}</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">Oficina / reparos mecânicos</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">
+              {viaturasManutencao > 0
+                ? `Oficina (${maxDiasManut}d max parado)`
+                : 'Nenhuma viatura em oficina'}
+            </div>
           </div>
         </div>
       </div>
@@ -559,21 +577,60 @@ export const ViaturasModule: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-3">
-                      <span
-                        className={`inline-block text-[10px] px-2 py-0.5 rounded font-bold ${
-                          it.status === 'Disponível'
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            : it.status === 'Alocado'
-                            ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                            : it.status === 'Manutenção'
-                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                            : it.status === 'Danificado / Avariado'
-                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                            : 'bg-slate-100 text-slate-800 border border-slate-200'
-                        }`}
-                      >
-                        {it.status}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span
+                          className={`inline-block text-[10px] px-2 py-0.5 rounded font-bold ${
+                            it.status === 'Disponível'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : it.status === 'Alocado'
+                              ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                              : it.status === 'Manutenção'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : it.status === 'Danificado / Avariado'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                              : 'bg-slate-100 text-slate-800 border border-slate-200'
+                          }`}
+                        >
+                          {it.status}
+                        </span>
+
+                        {(it.status === 'Manutenção' || it.status === 'Danificado / Avariado') && (() => {
+                          const dias = calcularDiasManutencao(it.data_inicio_manutencao);
+                          const isCritico = dias > 30;
+                          const isAtencao = dias > 7 && dias <= 30;
+                          return (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              <span
+                                className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                  isCritico
+                                    ? 'bg-rose-100 text-rose-800 border-rose-300 font-extrabold animate-pulse'
+                                    : isAtencao
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                    : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                }`}
+                                title={`Entrada na manutenção: ${
+                                  it.data_inicio_manutencao
+                                    ? new Date(it.data_inicio_manutencao).toLocaleDateString('pt-BR')
+                                    : 'Não informada'
+                                }`}
+                              >
+                                <Clock className="w-3 h-3 shrink-0" />
+                                <span>
+                                  {dias === 0 ? 'Entrada Hoje (0d)' : dias === 1 ? '1 dia na oficina' : `${dias} dias na oficina`}
+                                </span>
+                              </span>
+                              {it.motivo_manutencao && (
+                                <span
+                                  className="text-[10px] text-slate-600 font-medium max-w-[170px] truncate"
+                                  title={`Motivo / Oficina: ${it.motivo_manutencao}`}
+                                >
+                                  🔧 {it.motivo_manutencao}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="p-3 text-slate-700 font-medium">
                       {it.alocacao_atual && it.alocacao_atual.id_unidade !== 1 && !it.alocacao_atual.unidade_nome.toLowerCase().includes('sede') ? (
@@ -589,38 +646,42 @@ export const ViaturasModule: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 text-right">
-                      <div className="flex items-center justify-end space-x-1.5">
-                        {/* Realocação Individual */}
-                        {canPerformAlocacao && (
-                          <button
-                            onClick={() => setSelectedItemRealocar(it)}
-                            className="inline-flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
-                            title="Realocar viatura individualmente (para outra unidade ou retorno à sede)"
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Realocar</span>
-                          </button>
-                        )}
+                      {canCreateOrEdit ? (
+                        <div className="flex items-center justify-end space-x-1.5">
+                          {/* Realocação Individual */}
+                          {canPerformAlocacao && (
+                            <button
+                              onClick={() => setSelectedItemRealocar(it)}
+                              className="inline-flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
+                              title="Realocar viatura individualmente (para outra unidade ou retorno à sede)"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Realocar</span>
+                            </button>
+                          )}
 
-                        <button
-                          onClick={() => setSelectedItemEdit(it)}
-                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
-                          title="Editar Dados da Viatura"
-                        >
-                          <Edit className="w-3.5 h-3.5 text-amber-700" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setErroExclusao(null);
-                            setItemParaExcluir(it);
-                          }}
-                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
-                          title="Excluir Viatura do Sistema"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => setSelectedItemEdit(it)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
+                            title="Editar Dados da Viatura"
+                          >
+                            <Edit className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setErroExclusao(null);
+                              setItemParaExcluir(it);
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
+                            title="Excluir Viatura do Sistema"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                      )}
                     </td>
                   </tr>
                 ))

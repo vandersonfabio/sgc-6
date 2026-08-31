@@ -53,7 +53,9 @@ type SortField = 'tombo_serie' | 'tipo' | 'marca_modelo' | 'detalhes' | 'status'
 type SortDirection = 'asc' | 'desc';
 
 export const ComunicacaoModule: React.FC = () => {
-  const { db, canPerformAlocacao } = useDatabase();
+  const { db, canPerformAlocacao, canCreateOrEditItems, canManageCautelas } = useDatabase();
+  const canManage = canManageCautelas('Comunicação');
+  const canCreateOrEdit = canCreateOrEditItems('Comunicação');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Todos' | 'Disponível' | 'Alocado' | 'Cautelado' | 'Manutenção'>('Todos');
@@ -251,7 +253,7 @@ export const ComunicacaoModule: React.FC = () => {
             <span>Relatório PDF</span>
           </button>
 
-          {canPerformAlocacao && (
+          {canPerformAlocacao && canCreateOrEdit && (
             <button
               onClick={() => setShowNovaAlocacaoModal(true)}
               className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition cursor-pointer"
@@ -261,21 +263,25 @@ export const ComunicacaoModule: React.FC = () => {
             </button>
           )}
 
-          <button
-            onClick={() => setShowNovaCautelaModal(true)}
-            className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm shadow-emerald-600/30 transition focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>CAUTELAR RÁDIO / HT</span>
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setShowNovaCautelaModal(true)}
+              className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm shadow-emerald-600/30 transition focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>CAUTELAR RÁDIO / HT</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setShowNovoItemModal(true)}
-            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Cadastrar Equipamento</span>
-          </button>
+          {canCreateOrEdit && (
+            <button
+              onClick={() => setShowNovoItemModal(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Cadastrar Equipamento</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -645,39 +651,43 @@ export const ComunicacaoModule: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 text-right">
-                      <div className="flex items-center justify-end space-x-1.5">
-                        {/* Realocação Individual */}
-                        {canPerformAlocacao && (
+                      {canCreateOrEdit ? (
+                        <div className="flex items-center justify-end space-x-1.5">
+                          {/* Realocação Individual */}
+                          {canPerformAlocacao && (
+                            <button
+                              onClick={() => setSelectedItemRealocar(it)}
+                              className="inline-flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
+                              title="Realocar equipamento individualmente (para outra unidade ou retorno à sede)"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Realocar</span>
+                            </button>
+                          )}
+
                           <button
-                            onClick={() => setSelectedItemRealocar(it)}
-                            className="inline-flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
-                            title="Realocar equipamento individualmente (para outra unidade ou retorno à sede)"
+                            onClick={() => setSelectedItemEdit(it)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
+                            title="Editar Equipamento"
                           >
-                            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Realocar</span>
+                            <Edit className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>Editar</span>
                           </button>
-                        )}
 
-                        <button
-                          onClick={() => setSelectedItemEdit(it)}
-                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
-                          title="Editar Equipamento"
-                        >
-                          <Edit className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>Editar</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setErroExclusao(null);
-                            setItemParaExcluir(it);
-                          }}
-                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
-                          title="Excluir Equipamento do Sistema"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => {
+                              setErroExclusao(null);
+                              setItemParaExcluir(it);
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
+                            title="Excluir Equipamento do Sistema"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                      )}
                     </td>
                   </tr>
                 ))

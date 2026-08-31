@@ -36,7 +36,9 @@ import { PdfReportService } from '../../services/pdfReportService';
 import { CautelaCompleta, ItemComDetalhes, EstoqueLote } from '../../types/database';
 
 export const ArmasModule: React.FC = () => {
-  const { db, policiais, lotes, registrosExtravio, registrosDisparo } = useDatabase();
+  const { db, policiais, lotes, registrosExtravio, registrosDisparo, canCreateOrEditItems, canManageCautelas } = useDatabase();
+  const canManage = canManageCautelas('Armas');
+  const canCreateOrEdit = canCreateOrEditItems('Armas');
 
   const [activeSubTab, setActiveSubTab] = useState<
     'dashboard' | 'cautelas' | 'armas' | 'municoes' | 'disparos' | 'extravios' | 'permanentes'
@@ -176,22 +178,26 @@ export const ArmasModule: React.FC = () => {
 
         {/* Action CTAs: Apenas Nova Cautela e Cadastrar Material destacados */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            id="btn-abrir-nova-cautela"
-            onClick={() => setShowNovaCautelaModal(true)}
-            className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-md shadow-emerald-600/30 transition transform hover:-translate-y-0.5 focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-          >
-            <Plus className="w-5 h-5" />
-            <span>NOVA CAUTELA</span>
-          </button>
-          <button
-            id="btn-cadastrar-armamento"
-            onClick={() => setShowNovoItemModal(true)}
-            className="inline-flex items-center space-x-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-md shadow-blue-600/30 transition transform hover:-translate-y-0.5 cursor-pointer"
-          >
-            <Package className="w-4 h-4" />
-            <span>Cadastrar Material</span>
-          </button>
+          {canManage && (
+            <button
+              id="btn-abrir-nova-cautela"
+              onClick={() => setShowNovaCautelaModal(true)}
+              className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-md shadow-emerald-600/30 transition transform hover:-translate-y-0.5 focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+            >
+              <Plus className="w-5 h-5" />
+              <span>NOVA CAUTELA</span>
+            </button>
+          )}
+          {canCreateOrEdit && (
+            <button
+              id="btn-cadastrar-armamento"
+              onClick={() => setShowNovoItemModal(true)}
+              className="inline-flex items-center space-x-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-md shadow-blue-600/30 transition transform hover:-translate-y-0.5 cursor-pointer"
+            >
+              <Package className="w-4 h-4" />
+              <span>Cadastrar Material</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -702,14 +708,18 @@ export const ArmasModule: React.FC = () => {
                           )}
                         </td>
                         <td className="p-3 text-right">
-                          <button
-                            onClick={() => setSelectedItemEdit(it)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
-                            title="Editar Dados ou Estado"
-                          >
-                            <Edit className="w-3.5 h-3.5 text-blue-700" />
-                            <span>Editar</span>
-                          </button>
+                          {canCreateOrEdit ? (
+                            <button
+                              onClick={() => setSelectedItemEdit(it)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+                              title="Editar Dados ou Estado"
+                            >
+                              <Edit className="w-3.5 h-3.5 text-blue-700" />
+                              <span>Editar</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -733,16 +743,18 @@ export const ArmasModule: React.FC = () => {
                 Controle simplificado por calibre e fabricante • Edição e exclusão direta com baixa segura
               </p>
             </div>
-            <button
-              onClick={() => {
-                setSelectedMunicaoEdit(null);
-                setShowEditarMunicaoModal(true);
-              }}
-              className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow-xs transition shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Cadastrar Estoque de Munição</span>
-            </button>
+            {canCreateOrEdit && (
+              <button
+                onClick={() => {
+                  setSelectedMunicaoEdit(null);
+                  setShowEditarMunicaoModal(true);
+                }}
+                className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow-xs transition shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Cadastrar Estoque de Munição</span>
+              </button>
+            )}
           </div>
 
           {/* Search bar for munitions */}
@@ -841,31 +853,35 @@ export const ArmasModule: React.FC = () => {
                             {lote.observacao || 'Carga da Reserva Bélica'}
                           </td>
                           <td className="p-3 text-center">
-                            <div className="inline-flex items-center space-x-1.5">
-                              <button
-                                onClick={() => {
-                                  setIsGeneralMaterialEdit(false);
-                                  setSelectedMunicaoEdit(lote);
-                                  setShowEditarMunicaoModal(true);
-                                }}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
-                                title="Editar Estoque"
-                              >
-                                <Edit className="w-3.5 h-3.5 text-blue-700" />
-                                <span>Editar</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setLoteParaExcluir(lote);
-                                  setErroExclusao(null);
-                                }}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition"
-                                title="Excluir Registro"
-                              >
-                                <AlertOctagon className="w-3.5 h-3.5" />
-                                <span>Excluir</span>
-                              </button>
-                            </div>
+                            {canCreateOrEdit ? (
+                              <div className="inline-flex items-center space-x-1.5">
+                                <button
+                                  onClick={() => {
+                                    setIsGeneralMaterialEdit(false);
+                                    setSelectedMunicaoEdit(lote);
+                                    setShowEditarMunicaoModal(true);
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+                                  title="Editar Estoque"
+                                >
+                                  <Edit className="w-3.5 h-3.5 text-blue-700" />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setLoteParaExcluir(lote);
+                                    setErroExclusao(null);
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition"
+                                  title="Excluir Registro"
+                                >
+                                  <AlertOctagon className="w-3.5 h-3.5" />
+                                  <span>Excluir</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -886,17 +902,19 @@ export const ArmasModule: React.FC = () => {
                   Itens controlados por quantidade que não são cartuchos de armas de fogo (não contabilizados no somatório de munições)
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setIsGeneralMaterialEdit(true);
-                  setSelectedMunicaoEdit(null);
-                  setShowEditarMunicaoModal(true);
-                }}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition shadow-xs self-start"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Adicionar Material Não Serializado</span>
-              </button>
+              {canCreateOrEdit && (
+                <button
+                  onClick={() => {
+                    setIsGeneralMaterialEdit(true);
+                    setSelectedMunicaoEdit(null);
+                    setShowEditarMunicaoModal(true);
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition shadow-xs self-start"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Material Não Serializado</span>
+                </button>
+              )}
             </div>
 
             {outrosNaoSerializados.length === 0 ? (
@@ -925,27 +943,31 @@ export const ArmasModule: React.FC = () => {
                         <td className="p-3 text-right font-black text-slate-900">{lote.quantidade_atual} un.</td>
                         <td className="p-3 text-slate-500">{lote.observacao || '—'}</td>
                         <td className="p-3 text-center">
-                          <div className="inline-flex items-center space-x-1.5">
-                            <button
-                              onClick={() => {
-                                setIsGeneralMaterialEdit(true);
-                                setSelectedMunicaoEdit(lote);
-                                setShowEditarMunicaoModal(true);
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => {
-                                setLoteParaExcluir(lote);
-                                setErroExclusao(null);
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition"
-                            >
-                              Excluir
-                            </button>
-                          </div>
+                          {canCreateOrEdit ? (
+                            <div className="inline-flex items-center space-x-1.5">
+                              <button
+                                onClick={() => {
+                                  setIsGeneralMaterialEdit(true);
+                                  setSelectedMunicaoEdit(lote);
+                                  setShowEditarMunicaoModal(true);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setLoteParaExcluir(lote);
+                                  setErroExclusao(null);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] italic">Consulta</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -969,13 +991,15 @@ export const ArmasModule: React.FC = () => {
                 Registro formal de munições deflagradas em confrontos ou operações e abatimento automático do estoque
               </p>
             </div>
-            <button
-              onClick={() => setShowRegistrarDisparoModal(true)}
-              className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow-xs transition"
-            >
-              <Crosshair className="w-4 h-4" />
-              <span>Registrar Disparos / Repor Munições</span>
-            </button>
+            {canManage && (
+              <button
+                onClick={() => setShowRegistrarDisparoModal(true)}
+                className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow-xs transition"
+              >
+                <Crosshair className="w-4 h-4" />
+                <span>Registrar Disparos / Repor Munições</span>
+              </button>
+            )}
           </div>
 
           <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
@@ -1065,13 +1089,15 @@ export const ArmasModule: React.FC = () => {
                 Histórico de armamentos, coletes e munições extraviadas, BOs e portarias de IPM instauradas
               </p>
             </div>
-            <button
-              onClick={() => setShowRegistrarExtravioModal(true)}
-              className="px-3.5 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow-xs transition"
-            >
-              <AlertOctagon className="w-4 h-4" />
-              <span>Registrar Extravio</span>
-            </button>
+            {canManage && (
+              <button
+                onClick={() => setShowRegistrarExtravioModal(true)}
+                className="px-3.5 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow-xs transition"
+              >
+                <AlertOctagon className="w-4 h-4" />
+                <span>Registrar Extravio</span>
+              </button>
+            )}
           </div>
 
           <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
