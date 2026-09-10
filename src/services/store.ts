@@ -68,6 +68,7 @@ import {
   pushExtravioToSupabase,
   pushDisparoToSupabase,
   pushAuditoriaToSupabase,
+  flushPendingAuditoria,
   pushOperadorToSupabase,
   deleteOperadorFromSupabase,
   pushUnidadeToSupabase,
@@ -90,7 +91,13 @@ function loadOrSeed<T>(key: string, seed: T): T {
   try {
     const saved = localStorage.getItem(STORAGE_PREFIX + key);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(seed) && seed.length > 0) {
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          return seed;
+        }
+      }
+      return parsed;
     }
   } catch (e) {
     console.error(`Erro ao carregar dados de ${key}:`, e);
@@ -154,8 +161,12 @@ export class DatabaseEngine {
 
   constructor() {
     this.unidades = loadOrSeed('unidades', SEED_UNIDADES);
+    if (!this.unidades || this.unidades.length === 0) this.unidades = [...SEED_UNIDADES];
     this.policiais = loadOrSeed('policiais', SEED_POLICIAIS);
+    if (!this.policiais || this.policiais.length === 0) this.policiais = [...SEED_POLICIAIS];
     this.operadores = loadOrSeed('operadores', SEED_OPERADORES);
+    if (!this.operadores || this.operadores.length === 0) this.operadores = [...SEED_OPERADORES];
+
     // Ensure all seed operators have default initial passwords if missing
     let operadoresChanged = false;
     this.operadores = this.operadores.map((op) => {
@@ -201,7 +212,8 @@ export class DatabaseEngine {
     }
 
     const savedOpId = localStorage.getItem(STORAGE_PREFIX + 'current_operador');
-    this.currentOperadorId = savedOpId || SEED_OPERADORES[0].id_operador;
+    const matchedOp = this.operadores.find((o) => o.id_operador === savedOpId);
+    this.currentOperadorId = matchedOp ? matchedOp.id_operador : (this.operadores[0]?.id_operador || SEED_OPERADORES[0].id_operador);
 
     const savedAuth = localStorage.getItem(STORAGE_PREFIX + 'auth_session');
     this.isAuthenticated = savedAuth === 'true';
@@ -406,10 +418,14 @@ export class DatabaseEngine {
     this.notify();
     const res = await pullAllDataFromSupabase();
     if (res.success && res.data) {
-      if (res.data.unidades !== undefined) this.unidades = res.data.unidades;
-      if (res.data.policiais !== undefined) this.policiais = res.data.policiais;
-      if (res.data.operadores !== undefined) this.operadores = res.data.operadores;
-      if (res.data.tiposMateriais !== undefined) this.tiposMateriais = res.data.tiposMateriais;
+      if (res.data.unidades && res.data.unidades.length > 0) this.unidades = res.data.unidades;
+      if (res.data.policiais && res.data.policiais.length > 0) this.policiais = res.data.policiais;
+      if (res.data.operadores && res.data.operadores.length > 0) {
+        this.operadores = res.data.operadores;
+      } else if (!this.operadores || this.operadores.length === 0) {
+        this.operadores = [...SEED_OPERADORES];
+      }
+      if (res.data.tiposMateriais && res.data.tiposMateriais.length > 0) this.tiposMateriais = res.data.tiposMateriais;
       this.itens = res.data.itens || [];
       this.detalheArma = res.data.detalheArma || [];
       this.detalheColete = res.data.detalheColete || [];
@@ -425,7 +441,10 @@ export class DatabaseEngine {
       this.alocacaoItens = res.data.alocacaoItens || [];
       this.registrosDisparo = res.data.registrosDisparo || [];
       this.registrosExtravio = res.data.registrosExtravio || [];
-      if (res.data.auditoriaLogs !== undefined) this.auditoriaLogs = res.data.auditoriaLogs;
+      if (res.data.auditoriaLogs && res.data.auditoriaLogs.length > 0) {
+        this.auditoriaLogs = res.data.auditoriaLogs;
+      }
+      flushPendingAuditoria().catch(() => {});
 
       this.reconciliarStatusItens();
       this.persistAll();
@@ -447,10 +466,14 @@ export class DatabaseEngine {
     try {
       const res = await pullAllDataFromSupabase();
       if (res.success && res.data) {
-        if (res.data.unidades !== undefined) this.unidades = res.data.unidades;
-        if (res.data.policiais !== undefined) this.policiais = res.data.policiais;
-        if (res.data.operadores !== undefined) this.operadores = res.data.operadores;
-        if (res.data.tiposMateriais !== undefined) this.tiposMateriais = res.data.tiposMateriais;
+        if (res.data.unidades && res.data.unidades.length > 0) this.unidades = res.data.unidades;
+        if (res.data.policiais && res.data.policiais.length > 0) this.policiais = res.data.policiais;
+        if (res.data.operadores && res.data.operadores.length > 0) {
+          this.operadores = res.data.operadores;
+        } else if (!this.operadores || this.operadores.length === 0) {
+          this.operadores = [...SEED_OPERADORES];
+        }
+        if (res.data.tiposMateriais && res.data.tiposMateriais.length > 0) this.tiposMateriais = res.data.tiposMateriais;
         this.itens = res.data.itens || [];
         this.detalheArma = res.data.detalheArma || [];
         this.detalheColete = res.data.detalheColete || [];
@@ -466,7 +489,10 @@ export class DatabaseEngine {
         this.alocacaoItens = res.data.alocacaoItens || [];
         this.registrosDisparo = res.data.registrosDisparo || [];
         this.registrosExtravio = res.data.registrosExtravio || [];
-        if (res.data.auditoriaLogs !== undefined) this.auditoriaLogs = res.data.auditoriaLogs;
+        if (res.data.auditoriaLogs && res.data.auditoriaLogs.length > 0) {
+          this.auditoriaLogs = res.data.auditoriaLogs;
+        }
+        flushPendingAuditoria().catch(() => {});
 
         this.reconciliarStatusItens();
         this.persistAll();
@@ -765,20 +791,39 @@ export class DatabaseEngine {
   }
 
   public getCurrentOperador(): { operador: OperadorSistema; policial: Policial } {
+    if (!this.operadores || this.operadores.length === 0) {
+      this.operadores = [...SEED_OPERADORES];
+      save('operadores', this.operadores);
+    }
+
     let op = this.operadores.find((o) => o.id_operador === this.currentOperadorId);
     if (!op) {
       op = this.operadores[0];
-      this.currentOperadorId = op.id_operador;
     }
-    const pol = this.policiais.find((p) => p.id_policial === op!.id_policial) || {
-      id_policial: 0,
-      matricula: 'N/A',
-      patente: 'PM',
-      nome_guerra: 'Operador',
-      nome_completo: 'Operador do Sistema',
-      id_unidade_lotacao: 1,
-      status: 'Ativo' as const,
-    };
+    if (!op) {
+      op = SEED_OPERADORES[0] || {
+        id_operador: 'a0000000-0000-0000-0000-000000000001',
+        id_policial: 1,
+        perfil_acesso: 'Superuser',
+        status: 'Ativo',
+        email: 'vanderson.fabio@gmail.com',
+        senha: 'suporte5admin',
+      };
+      this.operadores = [op];
+    }
+    this.currentOperadorId = op.id_operador;
+
+    const pol = (this.policiais && this.policiais.find((p) => p.id_policial === op!.id_policial)) ||
+      (this.policiais && this.policiais[0]) ||
+      SEED_POLICIAIS[0] || {
+        id_policial: op.id_policial || 1,
+        matricula: 'PM-0001',
+        patente: 'Cap PM',
+        nome_guerra: 'Administrador',
+        nome_completo: 'Administrador do Sistema',
+        id_unidade_lotacao: 1,
+        status: 'Ativo' as const,
+      };
     return { operador: op, policial: pol };
   }
 
@@ -798,10 +843,24 @@ export class DatabaseEngine {
   }
 
   public getOperadores(): Array<{ operador: OperadorSistema; policial: Policial }> {
+    if (!this.operadores || this.operadores.length === 0) {
+      return SEED_OPERADORES.map((op) => ({
+        operador: op,
+        policial: this.policiais.find((p) => p.id_policial === op.id_policial) || SEED_POLICIAIS[0],
+      }));
+    }
     return this.operadores.map((op) => ({
       operador: op,
-      policial: this.policiais.find((p) => p.id_policial === op.id_policial)!,
-    })).filter((x) => x.policial);
+      policial: this.policiais.find((p) => p.id_policial === op.id_policial) || {
+        id_policial: op.id_policial || 0,
+        matricula: 'N/A',
+        patente: 'PM',
+        nome_guerra: (op.email || 'Operador').split('@')[0],
+        nome_completo: op.email || 'Operador do Sistema',
+        id_unidade_lotacao: 1,
+        status: 'Ativo' as const,
+      },
+    }));
   }
 
   public getTiposMateriais(modulo?: ModuloTipo): TipoMaterial[] {
@@ -851,12 +910,16 @@ export class DatabaseEngine {
       if (activeCautelaLink) {
         const caut = this.cautelas.find((c) => c.id_cautela === activeCautelaLink.id_cautela);
         const pol = caut ? this.policiais.find((p) => p.id_policial === caut.id_policial) : null;
+        const unid = caut && caut.id_unidade ? this.unidades.find((u) => u.id_unidade === caut.id_unidade) : null;
         if (caut && pol) {
           cautela_atual = {
             id_cautela: caut.id_cautela,
             policial_nome: pol.nome_guerra,
             policial_grad: pol.patente,
             policial_matricula: pol.matricula,
+            id_unidade: caut.id_unidade || null,
+            unidade_nome: unid ? unid.nome : null,
+            destinatario_tipo: caut.destinatario_tipo || (caut.id_unidade ? 'UNIDADE' : 'POLICIAL'),
             data_retirada: caut.data_retirada,
             tipo: caut.tipo,
             status: caut.status,
@@ -1054,9 +1117,13 @@ export class DatabaseEngine {
         }
       }
 
+      const unid = c.id_unidade ? this.unidades.find((u) => u.id_unidade === c.id_unidade) : null;
+
       result.push({
         ...c,
         policial: pol,
+        unidade: unid || null,
+        destinatario_tipo: c.destinatario_tipo || (c.id_unidade ? 'UNIDADE' : 'POLICIAL'),
         operador_entrega: {
           operador: opEntrega || { id_operador: c.id_operador_entrega, id_policial: 1, perfil_acesso: 'Superuser', status: 'Ativo' },
           policial: polEntrega || pol,
@@ -1111,8 +1178,11 @@ export class DatabaseEngine {
   // 1. Criar Cautela (Armas ou Comunicação)
   public createCautela(params: {
     id_policial: number;
+    id_unidade?: number | null;
+    destinatario_tipo?: 'POLICIAL' | 'UNIDADE';
     tipo: TipoCautela;
     data_prevista_devolucao?: string | null;
+    observacao?: string | null;
     itens: Array<{ id_item: number; observacao?: string }>;
     lotes: Array<{ id_lote: number; quantidade: number }>;
   }): { success: boolean; id_cautela?: number; error?: string } {
@@ -1142,9 +1212,23 @@ export class DatabaseEngine {
         }
       }
 
+      const destTipo = params.destinatario_tipo || (params.id_unidade ? 'UNIDADE' : 'POLICIAL');
+      const targetUnid = params.id_unidade ? this.unidades.find((u) => u.id_unidade === params.id_unidade) : null;
+      let obsFinal = params.observacao || null;
+      if (destTipo === 'UNIDADE' && targetUnid) {
+        const prefix = `[Destinado à Subunidade: ${targetUnid.nome}]`;
+        if (!obsFinal) {
+          obsFinal = prefix;
+        } else if (!obsFinal.includes(targetUnid.nome)) {
+          obsFinal = `${prefix} ${obsFinal}`;
+        }
+      }
+
       const novaCautela: Cautela = {
         id_cautela: nextId,
         id_policial: params.id_policial,
+        id_unidade: params.id_unidade || null,
+        destinatario_tipo: destTipo,
         id_operador_entrega: currentOp.operador.id_operador,
         id_operador_devolucao: null,
         tipo: params.tipo,
@@ -1152,6 +1236,7 @@ export class DatabaseEngine {
         data_prevista_devolucao: params.data_prevista_devolucao || null,
         data_devolucao_efetiva: null,
         status: 'Aberta',
+        observacao: obsFinal,
       };
 
       this.cautelas.push(novaCautela);
@@ -1247,19 +1332,60 @@ export class DatabaseEngine {
       }
 
       const currentOp = this.getCurrentOperador();
-      caut.status = 'Finalizada';
-      caut.data_devolucao_efetiva = new Date().toISOString();
-      caut.id_operador_devolucao = currentOp.operador.id_operador;
-      if (params.observacaoGeral) {
-        caut.observacao = `${caut.observacao || ''} [BAIXA: ${params.observacaoGeral}]`.trim();
+      // Check if all items and all lotes in this cautela have been returned
+      const totalItensNaCautela = this.cautelaItens.filter((ci) => ci.id_cautela === params.id_cautela);
+      const totalLotesNaCautela = this.cautelaEstoque.filter((ce) => ce.id_cautela === params.id_cautela);
+      
+      const itensDevolvidosCount = params.devolucoes.length;
+      const todosItensDevolvidos = itensDevolvidosCount >= totalItensNaCautela.length;
+      
+      let todosLotesDevolvidos = true;
+      if (params.lotesDevolvidos && params.lotesDevolvidos.length > 0) {
+        for (const sl of totalLotesNaCautela) {
+          const devLote = params.lotesDevolvidos.find((ld) => ld.id_lote === sl.id_lote);
+          if (!devLote || devLote.quantidadeDevolvida < sl.quantidade) {
+            todosLotesDevolvidos = false;
+            break;
+          }
+        }
+      }
+
+      const isTotalmenteFinalizada = todosItensDevolvidos && todosLotesDevolvidos;
+
+      if (isTotalmenteFinalizada) {
+        caut.status = 'Finalizada';
+        caut.data_devolucao_efetiva = new Date().toISOString();
+        caut.id_operador_devolucao = currentOp.operador.id_operador;
+        if (params.observacaoGeral) {
+          caut.observacao = `${caut.observacao || ''} [BAIXA TOTAL: ${params.observacaoGeral}]`.trim();
+        }
+      } else {
+        // Partial return: remove returned items from active link or leave cautela open
+        caut.status = 'Aberta';
+        const hojeStr = new Date().toLocaleDateString('pt-BR');
+        caut.observacao = `${caut.observacao || ''} [RECOLHIMENTO PARCIAL ${hojeStr}: ${itensDevolvidosCount} item(ns) devolvido(s). ${params.observacaoGeral || ''}]`.trim();
+        
+        // Remove returned items from cautelaItens so remaining items stay active
+        const returnedItemIds = new Set(params.devolucoes.map((d) => d.id_item));
+        this.cautelaItens = this.cautelaItens.filter(
+          (ci) => !(ci.id_cautela === params.id_cautela && returnedItemIds.has(ci.id_item))
+        );
+
+        // Adjust stock link for partially returned lots
+        if (params.lotesDevolvidos && params.lotesDevolvidos.length > 0) {
+          for (const ld of params.lotesDevolvidos) {
+            const ce = this.cautelaEstoque.find((cEst) => cEst.id_cautela === params.id_cautela && cEst.id_lote === ld.id_lote);
+            if (ce) {
+              ce.quantidade -= Math.max(0, ld.quantidadeDevolvida);
+            }
+          }
+          // Remove zero-quantity links
+          this.cautelaEstoque = this.cautelaEstoque.filter((ce) => ce.quantidade > 0);
+        }
       }
 
       // Update cautela item notes & update status according to inspection
       for (const dev of params.devolucoes) {
-        const link = this.cautelaItens.find((ci) => ci.id_cautela === params.id_cautela && ci.id_item === dev.id_item);
-        if (link) {
-          link.observacao_estado_devolucao = dev.observacao_estado_devolucao || 'Devolvido conferido sem avarias';
-        }
         const it = this.itens.find((i) => i.id_item === dev.id_item);
         if (it) {
           const targetStatus = dev.status_destino || 'Disponível';
@@ -1326,6 +1452,251 @@ export class DatabaseEngine {
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Erro ao finalizar cautela' };
+    }
+  }
+
+  // 2.1 Adicionar Itens ou Munições a uma Cautela / Carga Aberta existente
+  public adicionarItensACautela(params: {
+    id_cautela: number;
+    itens: Array<{ id_item: number; observacao_estado_entrega?: string }>;
+    lotes: Array<{ id_lote: number; quantidade: number }>;
+    observacaoAditivo?: string;
+  }): { success: boolean; error?: string } {
+    try {
+      const caut = this.cautelas.find((c) => c.id_cautela === params.id_cautela);
+      if (!caut || (caut.status !== 'Aberta' && caut.status !== 'Atrasada')) {
+        return { success: false, error: 'Cautela não encontrada ou já finalizada' };
+      }
+
+      // Validate items availability
+      for (const reqItem of params.itens) {
+        const item = this.itens.find((i) => i.id_item === reqItem.id_item);
+        if (!item || item.status !== 'Disponível') {
+          return {
+            success: false,
+            error: `Item "${item?.tipo_item}" (${item?.numero_tombo || item?.numero_serie || ''}) não está disponível para cautela.`,
+          };
+        }
+      }
+
+      // Validate lotes stock
+      for (const reqLote of params.lotes) {
+        const lote = this.lotes.find((l) => l.id_lote === reqLote.id_lote);
+        if (!lote || lote.quantidade_atual < reqLote.quantidade) {
+          return {
+            success: false,
+            error: `Estoque insuficiente no lote ${lote?.lote_fabricacao || ''} de ${lote?.tipo_item || 'munição'}. Solicitado: ${reqLote.quantidade}, Disponível: ${lote?.quantidade_atual ?? 0}.`,
+          };
+        }
+      }
+
+      // Add items & update item status to Cautelado
+      for (const reqItem of params.itens) {
+        this.cautelaItens.push({
+          id_cautela: params.id_cautela,
+          id_item: reqItem.id_item,
+          observacao_estado_entrega: reqItem.observacao_estado_entrega || 'Item adicionado em aditivo de carga',
+        });
+        const item = this.itens.find((i) => i.id_item === reqItem.id_item);
+        if (item) {
+          item.status = 'Cautelado';
+        }
+      }
+
+      // Add lotes & deduct stock
+      for (const reqLote of params.lotes) {
+        const existingStockLink = this.cautelaEstoque.find(
+          (ce) => ce.id_cautela === params.id_cautela && ce.id_lote === reqLote.id_lote
+        );
+        if (existingStockLink) {
+          existingStockLink.quantidade += reqLote.quantidade;
+        } else {
+          this.cautelaEstoque.push({
+            id_cautela: params.id_cautela,
+            id_lote: reqLote.id_lote,
+            quantidade: reqLote.quantidade,
+          });
+        }
+
+        const lote = this.lotes.find((l) => l.id_lote === reqLote.id_lote);
+        if (lote) {
+          lote.quantidade_atual -= reqLote.quantidade;
+        }
+      }
+
+      if (params.observacaoAditivo) {
+        const hojeStr = new Date().toLocaleDateString('pt-BR');
+        caut.observacao = `${caut.observacao || ''} [ADITIVO ${hojeStr}: ${params.observacaoAditivo}]`.trim();
+      }
+
+      this.persistAll();
+      this.notify();
+
+      const itemsToSync = this.cautelaItens.filter((ci) => ci.id_cautela === params.id_cautela);
+      const lotesToSync = this.cautelaEstoque.filter((ce) => ce.id_cautela === params.id_cautela);
+      const lotesSaldos = params.lotes.map((rl) => {
+        const l = this.lotes.find((lt) => lt.id_lote === rl.id_lote);
+        return { id_lote: rl.id_lote, quantidade_atual: l?.quantidade_atual ?? 0 };
+      });
+
+      pushCautelaToSupabase(caut, itemsToSync, lotesToSync, lotesSaldos).catch((e) =>
+        console.warn('[Supabase] Erro ao sincronizar aditivo de cautela:', e)
+      );
+
+      this.registrarAuditoria('ADITIVO_CAUTELA', 'cautela', {
+        id_cautela: params.id_cautela,
+        itensAdicionados: params.itens.length,
+        lotesAdicionados: params.lotes.length,
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro ao adicionar itens à cautela' };
+    }
+  }
+
+  // 2.2 Gerenciar / Editar Carga Completa de Subunidade (Adicionar itens, recolher itens sem disparo, ajustar munições e trocar encarregado)
+  public editarCargaSubunidade(params: {
+    id_cautela: number;
+    novo_id_policial?: number;
+    tipo?: TipoCautela;
+    observacao?: string;
+    // Itens a adicionar
+    itensAdicionar?: Array<{ id_item: number; observacao_estado_entrega?: string }>;
+    // Itens a recolher para a Reserva Central (Disponível ou Manutenção)
+    itensRecolher?: Array<{ id_item: number; status_destino: 'Disponível' | 'Manutenção'; observacao?: string }>;
+    // Lotes de munição (saldo final desejado na carga da subunidade)
+    lotesAjuste?: Array<{ id_lote: number; quantidade_final: number }>;
+  }): { success: boolean; error?: string } {
+    try {
+      const caut = this.cautelas.find((c) => c.id_cautela === params.id_cautela);
+      if (!caut) {
+        return { success: false, error: 'Carga de Subunidade não encontrada' };
+      }
+
+      // Update basic fields
+      if (params.novo_id_policial) {
+        caut.id_policial = params.novo_id_policial;
+      }
+      if (params.tipo) {
+        caut.tipo = params.tipo;
+      }
+
+      // 1. Processar itens a adicionar
+      if (params.itensAdicionar && params.itensAdicionar.length > 0) {
+        for (const reqItem of params.itensAdicionar) {
+          const item = this.itens.find((i) => i.id_item === reqItem.id_item);
+          if (!item || item.status !== 'Disponível') {
+            return {
+              success: false,
+              error: `Item "${item?.tipo_item}" (${item?.numero_tombo || item?.numero_serie || ''}) não está disponível na reserva.`,
+            };
+          }
+          this.cautelaItens.push({
+            id_cautela: params.id_cautela,
+            id_item: reqItem.id_item,
+            observacao_estado_entrega: reqItem.observacao_estado_entrega || 'Item adicionado à carga',
+          });
+          item.status = 'Cautelado';
+        }
+      }
+
+      // 2. Processar itens a recolher para a Reserva Central (SEM disparo ou perda)
+      if (params.itensRecolher && params.itensRecolher.length > 0) {
+        for (const rec of params.itensRecolher) {
+          // Remover do vínculo da cautela
+          this.cautelaItens = this.cautelaItens.filter(
+            (ci) => !(ci.id_cautela === params.id_cautela && ci.id_item === rec.id_item)
+          );
+          // Retornar status do item para Disponível ou Manutenção
+          const item = this.itens.find((i) => i.id_item === rec.id_item);
+          if (item) {
+            item.status = rec.status_destino;
+          }
+        }
+      }
+
+      // 3. Processar ajuste de munições (Lotes)
+      if (params.lotesAjuste) {
+        for (const aj of params.lotesAjuste) {
+          const existingLink = this.cautelaEstoque.find(
+            (ce) => ce.id_cautela === params.id_cautela && ce.id_lote === aj.id_lote
+          );
+          const qtdAtualNaCarga = existingLink ? existingLink.quantidade : 0;
+          const diferenca = aj.quantidade_final - qtdAtualNaCarga;
+
+          const loteEstoque = this.lotes.find((l) => l.id_lote === aj.id_lote);
+          if (!loteEstoque) continue;
+
+          if (diferenca > 0) {
+            // Quer mais munições: verifica se a Reserva Central possui saldo
+            if (loteEstoque.quantidade_atual < diferenca) {
+              return {
+                success: false,
+                error: `Saldo insuficiente na Reserva Central para o lote ${loteEstoque.lote_fabricacao}. Solicitado acréscimo de ${diferenca}, disponível: ${loteEstoque.quantidade_atual}.`,
+              };
+            }
+            loteEstoque.quantidade_atual -= diferenca;
+            if (existingLink) {
+              existingLink.quantidade = aj.quantidade_final;
+            } else {
+              this.cautelaEstoque.push({
+                id_cautela: params.id_cautela,
+                id_lote: aj.id_lote,
+                quantidade: aj.quantidade_final,
+              });
+            }
+          } else if (diferenca < 0) {
+            // Está devolvendo parte das munições para a Reserva Central
+            const qtdDevolvida = Math.abs(diferenca);
+            loteEstoque.quantidade_atual += qtdDevolvida;
+            if (existingLink) {
+              existingLink.quantidade = aj.quantidade_final;
+            }
+          }
+        }
+        // Remove zero-quantity links
+        this.cautelaEstoque = this.cautelaEstoque.filter((ce) => ce.quantidade > 0);
+      }
+
+      // Update observação/audit log
+      const hojeStr = new Date().toLocaleDateString('pt-BR');
+      if (params.observacao) {
+        caut.observacao = `${caut.observacao || ''} [ALT. ${hojeStr}: ${params.observacao}]`.trim();
+      }
+
+      // Check if all items & lots are empty; if empty, mark as Finalizada, otherwise keep Aberta
+      const itensRestantes = this.cautelaItens.filter((ci) => ci.id_cautela === params.id_cautela);
+      const lotesRestantes = this.cautelaEstoque.filter((ce) => ce.id_cautela === params.id_cautela);
+      if (itensRestantes.length === 0 && lotesRestantes.length === 0) {
+        caut.status = 'Finalizada';
+        caut.data_devolucao_efetiva = new Date().toISOString();
+      } else {
+        caut.status = 'Aberta';
+      }
+
+      this.persistAll();
+      this.notify();
+
+      const itemsToSync = this.cautelaItens.filter((ci) => ci.id_cautela === params.id_cautela);
+      const lotesToSync = this.cautelaEstoque.filter((ce) => ce.id_cautela === params.id_cautela);
+      const lotesSaldos = (params.lotesAjuste || []).map((aj) => {
+        const l = this.lotes.find((lt) => lt.id_lote === aj.id_lote);
+        return { id_lote: aj.id_lote, quantidade_atual: l?.quantidade_atual ?? 0 };
+      });
+
+      pushCautelaToSupabase(caut, itemsToSync, lotesToSync, lotesSaldos).catch((e) =>
+        console.warn('[Supabase] Erro ao sincronizar edição de carga da subunidade:', e)
+      );
+
+      this.registrarAuditoria('EDICAO_CARGA_SUBUNIDADE', 'cautela', {
+        id_cautela: params.id_cautela,
+        obs: params.observacao,
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro ao atualizar carga da subunidade' };
     }
   }
 
@@ -2777,7 +3148,7 @@ export function useDatabase() {
   }, []);
 
   const currentOpInfo = db.getCurrentOperador();
-  const perfil = currentOpInfo.operador.perfil_acesso;
+  const perfil = currentOpInfo?.operador?.perfil_acesso || 'Superuser';
 
   // RBAC checks
   const isComandante = perfil === 'Comandante';
@@ -2816,9 +3187,9 @@ export function useDatabase() {
   };
 
   const currentOperator = {
-    ...currentOpInfo.operador,
-    tipo_perfil: currentOpInfo.operador.perfil_acesso,
-    policial: currentOpInfo.policial,
+    ...(currentOpInfo?.operador || {}),
+    tipo_perfil: perfil,
+    policial: currentOpInfo?.policial,
   };
 
   return {
@@ -2829,9 +3200,9 @@ export function useDatabase() {
     cadastrarOperador: (dados: any) => db.cadastrarOperador(dados),
     editarOperador: (id: string, dados: any) => db.editarOperador(id, dados),
     excluirOperador: (id: string) => db.excluirOperador(id),
-    currentOperador: currentOpInfo.operador,
+    currentOperador: currentOpInfo?.operador,
     currentOperator,
-    currentPolicial: currentOpInfo.policial,
+    currentPolicial: currentOpInfo?.policial,
     perfil,
     isSuperuser,
     isP4,

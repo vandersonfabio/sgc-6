@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDatabase } from '../../services/store';
 import { CautelaCompleta } from '../../types/database';
 import {
@@ -23,6 +23,22 @@ interface ModalDevolucaoProps {
 
 export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose, onSuccess }) => {
   const { db } = useDatabase();
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Track which items are checked for return
+  const [selectedItemIdsToReturn, setSelectedItemIdsToReturn] = useState<number[]>(
+    cautela.itens.map((ci) => ci.item.id_item)
+  );
 
   const [devolucoes, setDevolucoes] = useState<
     Array<{
@@ -54,6 +70,12 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
   const [reporEstoque, setReporEstoque] = useState(true);
   const [observacaoGeral, setObservacaoGeral] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const toggleItemReturnCheck = (id_item: number) => {
+    setSelectedItemIdsToReturn((prev) =>
+      prev.includes(id_item) ? prev.filter((id) => id !== id_item) : [...prev, id_item]
+    );
+  };
 
   const handleSetStatusDestino = (
     id_item: number,
@@ -99,8 +121,9 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
     );
   };
 
-  const hasExtravio = devolucoes.some((d) => d.status_destino === 'Extraviado');
-  const hasManutencao = devolucoes.some((d) => d.status_destino === 'Manutenção');
+  const isPartialReturn = selectedItemIdsToReturn.length < cautela.itens.length;
+  const hasExtravio = devolucoes.filter((d) => selectedItemIdsToReturn.includes(d.id_item)).some((d) => d.status_destino === 'Extraviado');
+  const hasManutencao = devolucoes.filter((d) => selectedItemIdsToReturn.includes(d.id_item)).some((d) => d.status_destino === 'Manutenção');
   const hasMunicaoFaltante = lotesDevolvidos.some(
     (ld) => ld.quantidadeDevolvida < ld.quantidadeTotal
   );
@@ -109,13 +132,22 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
     e.preventDefault();
     setErrorMessage(null);
 
-    const res = db.finalizarCautela({
-      id_cautela: cautela.id_cautela,
-      devolucoes: devolucoes.map((d) => ({
+    if (selectedItemIdsToReturn.length === 0 && lotesDevolvidos.every((l) => l.quantidadeDevolvida === 0)) {
+      setErrorMessage('Selecione pelo menos um item ou quantidade de munição para registrar a devolução.');
+      return;
+    }
+
+    const filteredDevolucoes = devolucoes
+      .filter((d) => selectedItemIdsToReturn.includes(d.id_item))
+      .map((d) => ({
         id_item: d.id_item,
         status_destino: d.status_destino,
         observacao_estado_devolucao: d.observacao,
-      })),
+      }));
+
+    const res = db.finalizarCautela({
+      id_cautela: cautela.id_cautela,
+      devolucoes: filteredDevolucoes,
       lotesDevolvidos: lotesDevolvidos.map((ld) => ({
         id_lote: ld.id_lote,
         quantidadeDevolvida: ld.quantidadeDevolvida,
@@ -132,10 +164,15 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden my-6">
+    <div
+      className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-hidden"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 sm:p-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div className="shrink-0 p-4 sm:p-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between z-10">
           <div className="flex items-center space-x-3">
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
               <RotateCcw className="w-5 h-5" />
@@ -144,20 +181,34 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
               <h2 className="text-base font-bold text-slate-900">
                 Devolução e Conferência de Cautela • Nº {String(cautela.id_cautela).padStart(5, '0')}
               </h2>
-              <p className="text-xs text-slate-500">
-                Policial: <strong>{cautela.policial.patente} {cautela.policial.nome_guerra}</strong> ({cautela.policial.matricula})
-              </p>
+              <div className="text-xs text-slate-500 flex items-center space-x-1.5 flex-wrap">
+                {cautela.destinatario_tipo === 'UNIDADE' || cautela.unidade ? (
+                  <>
+                    <span className="font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                      {cautela.unidade?.nome || 'Subunidade'}
+                    </span>
+                    <span>• Encarregado:</span>
+                    <strong>{cautela.policial.patente} {cautela.policial.nome_guerra}</strong> ({cautela.policial.matricula})
+                  </>
+                ) : (
+                  <>
+                    <span>Policial:</span>
+                    <strong>{cautela.policial.patente} {cautela.policial.nome_guerra}</strong> ({cautela.policial.matricula})
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition"
+            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+            title="Fechar (Esc)"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 text-xs text-slate-700">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs text-slate-700">
           {errorMessage && (
             <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 font-medium">
               {errorMessage}
@@ -176,17 +227,33 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
             </div>
           )}
 
+          {/* Partial Return Notice */}
+          {isPartialReturn && (
+            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-start space-x-2.5">
+              <CheckSquare className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
+              <div>
+                <strong className="block font-bold">Modo: Devolução / Recolhimento Parcial ({selectedItemIdsToReturn.length} de {cautela.itens.length} itens)</strong>
+                <span className="text-[11px] text-blue-800">
+                  Os itens não selecionados continuarão sob a carga desta Subunidade/Policial. Esta cautela permanecerá ativa para os materiais restantes.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Checklist de Itens para Inspeção */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="font-bold text-slate-900">
-                1. Conferência e Estado Físico dos Equipamentos:
+                1. Conferência e Seleção de Itens a Devolver:
               </label>
-              <span className="text-[11px] text-slate-500">Defina a condição de cada material</span>
+              <span className="text-[11px] text-slate-500">
+                {selectedItemIdsToReturn.length} de {cautela.itens.length} selecionado(s)
+              </span>
             </div>
 
             <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
               {cautela.itens.map((ci, ciIdx) => {
+                const isSelectedForReturn = selectedItemIdsToReturn.includes(ci.item.id_item);
                 const devState = devolucoes.find((d) => d.id_item === ci.item.id_item);
                 const currentStatus = devState?.status_destino || 'Disponível';
 
@@ -194,7 +261,9 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
                   <div
                     key={`${ci.item.id_item || 'item'}-${ciIdx}`}
                     className={`p-3.5 rounded-xl border transition ${
-                      currentStatus === 'Disponível'
+                      !isSelectedForReturn
+                        ? 'bg-slate-100/70 border-slate-200 opacity-60'
+                        : currentStatus === 'Disponível'
                         ? 'bg-slate-50 border-slate-200'
                         : currentStatus === 'Manutenção'
                         ? 'bg-amber-50 border-amber-300'
@@ -202,81 +271,97 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                      <div>
-                        <div className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-                          <span>{ci.item.tipo_item} {ci.item.marca} {ci.item.modelo}</span>
-                          <span className="font-mono text-[10px] text-slate-500">
-                            [{ci.item.numero_tombo || ci.item.numero_serie || 'S/N'}]
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          Entrega: {ci.observacao_estado_entrega || 'Conforme'}
+                      <div className="flex items-start space-x-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isSelectedForReturn}
+                          onChange={() => toggleItemReturnCheck(ci.item.id_item)}
+                          className="w-4 h-4 mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                            <span>{ci.item.tipo_item} {ci.item.marca} {ci.item.modelo}</span>
+                            <span className="font-mono text-[10px] text-slate-500">
+                              [{ci.item.numero_tombo || ci.item.numero_serie || 'S/N'}]
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Entrega: {ci.observacao_estado_entrega || 'Conforme'}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Status Selector Buttons */}
-                      <div className="flex items-center space-x-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleSetStatusDestino(ci.item.id_item, 'Disponível')}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
-                            currentStatus === 'Disponível'
-                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Conforme (Disponível)</span>
-                        </button>
+                      {/* Status Selector Buttons (only active if item is selected for return) */}
+                      {isSelectedForReturn ? (
+                        <div className="flex items-center space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleSetStatusDestino(ci.item.id_item, 'Disponível')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
+                              currentStatus === 'Disponível'
+                                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Conforme (Disponível)</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleSetStatusDestino(ci.item.id_item, 'Manutenção')}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
-                            currentStatus === 'Manutenção'
-                              ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          <Wrench className="w-3 h-3" />
-                          <span>Manutenção</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetStatusDestino(ci.item.id_item, 'Manutenção')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
+                              currentStatus === 'Manutenção'
+                                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Wrench className="w-3 h-3" />
+                            <span>Manutenção</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleSetStatusDestino(ci.item.id_item, 'Em apuração')}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
-                            currentStatus === 'Em apuração'
-                              ? 'bg-purple-600 text-white border-purple-700 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          <Scale className="w-3 h-3" />
-                          <span>Em Apuração</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetStatusDestino(ci.item.id_item, 'Em apuração')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
+                              currentStatus === 'Em apuração'
+                                ? 'bg-purple-600 text-white border-purple-700 shadow-xs'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Scale className="w-3 h-3" />
+                            <span>Em Apuração</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleSetStatusDestino(ci.item.id_item, 'Extraviado')}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
-                            currentStatus === 'Extraviado'
-                              ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          <AlertOctagon className="w-3 h-3" />
-                          <span>Extraviado</span>
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() => handleSetStatusDestino(ci.item.id_item, 'Extraviado')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition inline-flex items-center space-x-1 ${
+                              currentStatus === 'Extraviado'
+                                ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <AlertOctagon className="w-3 h-3" />
+                            <span>Extraviado</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 font-semibold italic">
+                          Permanecerá na Carga
+                        </span>
+                      )}
                     </div>
 
-                    <input
-                      type="text"
-                      placeholder="Observações do armeiro na devolução..."
-                      value={devState?.observacao || ''}
-                      onChange={(e) => handleUpdateObs(ci.item.id_item, e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-[11px] focus:outline-none focus:border-emerald-600 shadow-xs"
-                    />
+                    {isSelectedForReturn && (
+                      <input
+                        type="text"
+                        placeholder="Observações do armeiro na devolução..."
+                        value={devState?.observacao || ''}
+                        onChange={(e) => handleUpdateObs(ci.item.id_item, e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-[11px] focus:outline-none focus:border-emerald-600 shadow-xs"
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -370,10 +455,18 @@ export const ModalDevolucao: React.FC<ModalDevolucaoProps> = ({ cautela, onClose
             </button>
             <button
               type="submit"
-              className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-md shadow-emerald-600/30 transition focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              className={`inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-md transition focus:ring-2 cursor-pointer ${
+                isPartialReturn
+                  ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 focus:ring-blue-500'
+                  : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30 focus:ring-emerald-500'
+              }`}
             >
               <PackageCheck className="w-4 h-4" />
-              <span>Confirmar Recebimento e Baixa</span>
+              <span>
+                {isPartialReturn
+                  ? `Confirmar Recolhimento Parcial (${selectedItemIdsToReturn.length} itens)`
+                  : 'Confirmar Recebimento e Baixa Total'}
+              </span>
             </button>
           </div>
         </form>

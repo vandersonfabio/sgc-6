@@ -339,7 +339,7 @@ export const OperadoresView: React.FC = () => {
                 </tr>
               ) : (
                 filteredOperadores.map(({ operador, policial }, idx) => {
-                  const isCurrent = operador.id_operador === currentOperador.id_operador;
+                  const isCurrent = !!(currentOperador?.id_operador && operador?.id_operador && operador.id_operador === currentOperador.id_operador);
                   return (
                     <tr key={`${operador.id_operador || 'op'}-${idx}`} className={`hover:bg-slate-50/80 transition ${isCurrent ? 'bg-blue-50/40' : ''}`}>
                       <td className="py-3 px-4">

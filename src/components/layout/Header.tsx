@@ -95,14 +95,14 @@ export const Header: React.FC<HeaderProps> = ({ activeModule, onNavigateToOperad
           >
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-white">
-                {currentPolicial.patente} {currentPolicial.nome_guerra}
+                {currentPolicial?.patente || 'PM'} {currentPolicial?.nome_guerra || 'Operador'}
               </p>
               <p className="text-[10px] text-blue-400 font-mono tracking-tight font-semibold">
-                {perfil === 'P4' ? 'GESTOR LOGÍSTICO (P4)' : perfil === 'Comandante' ? 'COMANDO GERAL (LEITURA)' : perfil.toUpperCase()}
+                {perfil === 'P4' ? 'GESTOR LOGÍSTICO (P4)' : perfil === 'Comandante' ? 'COMANDO GERAL (LEITURA)' : (perfil || 'SUPERUSER').toUpperCase()}
               </p>
             </div>
             <div className="h-9 w-9 bg-slate-700 rounded-full flex items-center justify-center border border-slate-600 text-xs font-bold text-slate-200 shadow-inner">
-              {getInitials(currentPolicial.nome_guerra || currentPolicial.nome_completo)}
+              {getInitials(currentPolicial?.nome_guerra || currentPolicial?.nome_completo)}
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
           </button>
@@ -120,13 +120,13 @@ export const Header: React.FC<HeaderProps> = ({ activeModule, onNavigateToOperad
                   </span>
                 </div>
                 <p className="text-xs font-bold text-white">
-                  {currentPolicial.patente} {currentPolicial.nome_completo}
+                  {currentPolicial?.patente || 'PM'} {currentPolicial?.nome_completo || 'Operador'}
                 </p>
                 <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400 font-mono">
-                  <span>Matrícula: {currentPolicial.matricula}</span>
+                  <span>Matrícula: {currentPolicial?.matricula || 'N/A'}</span>
                 </div>
                 <p className="text-[10px] text-slate-500 font-mono truncate mt-0.5">
-                  {currentOperador.email}
+                  {currentOperador?.email || 'Nenhum e-mail vinculado'}
                 </p>
               </div>
 

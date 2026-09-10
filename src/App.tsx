@@ -57,7 +57,7 @@ export default function App() {
       <Header onNavigateToOperadores={() => setActiveTab('operadores')} />
 
       {/* Main Container */}
-      <div className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 flex flex-col space-y-4">
+      <div className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-4 flex flex-col space-y-4">
         {/* Role-Aware Navigation Bar */}
         <Navigation activeTab={activeTab} onSelectTab={setActiveTab} />
 
@@ -109,8 +109,8 @@ export default function App() {
       </div>
 
       {/* Institutional Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 px-4 text-center text-[11px] text-slate-600">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <footer className="border-t border-slate-200 bg-white py-4 px-3 sm:px-6 lg:px-8 text-center text-[11px] text-slate-600">
+        <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
             <strong>SGC-6 • Sistema de Gestão e Cautela do 6º BPM</strong> • Polícia Militar do Rio Grande do Norte (PMRN)
           </div>

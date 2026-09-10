@@ -12,6 +12,7 @@ import {
   User,
   Crosshair,
   AlertOctagon,
+  Building2,
 } from 'lucide-react';
 import { PdfReportService } from '../../services/pdfReportService';
 import { useDatabase } from '../../services/store';
@@ -36,7 +37,7 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
   const { db, canManageCautelas } = useDatabase();
   const canManage = canManageCautelas(modulo);
   const [searchMatricula, setSearchMatricula] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'Temporária' | 'Permanente' | 'atrasadas'>('todos');
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'individuais' | 'subunidades' | 'Temporária' | 'Permanente' | 'atrasadas'>('todos');
 
   const now = new Date();
 
@@ -45,11 +46,16 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
     if (c.status !== 'Aberta' && c.status !== 'Atrasada') return false;
 
     const term = searchMatricula.toLowerCase().trim();
+    const isUnidade = c.destinatario_tipo === 'UNIDADE' || !!c.id_unidade;
+    const unidadeNome = c.unidade?.nome || '';
+
     const matchesSearch =
       !term ||
       c.policial.matricula.toLowerCase().includes(term) ||
       c.policial.nome_guerra.toLowerCase().includes(term) ||
       c.policial.nome_completo.toLowerCase().includes(term) ||
+      unidadeNome.toLowerCase().includes(term) ||
+      (c.observacao || '').toLowerCase().includes(term) ||
       c.itens.some(
         (ci) =>
           ci.item.tipo_item.toLowerCase().includes(term) ||
@@ -63,6 +69,8 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
       (c.tipo === 'Temporária' && c.data_prevista_devolucao && new Date(c.data_prevista_devolucao) < now);
 
     if (filtroTipo === 'atrasadas') return matchesSearch && isAtrasada;
+    if (filtroTipo === 'individuais') return matchesSearch && !isUnidade;
+    if (filtroTipo === 'subunidades') return matchesSearch && isUnidade;
     if (filtroTipo === 'Temporária') return matchesSearch && c.tipo === 'Temporária';
     if (filtroTipo === 'Permanente') return matchesSearch && c.tipo === 'Permanente';
 
@@ -80,20 +88,20 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
   return (
     <div className="space-y-3">
       {/* Search Bar & Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por Matrícula (ex: PM-240992-1), Nome ou Tombo/Série..."
+            placeholder="Buscar por Policial, Matrícula, Subunidade (ex: DPM Ipueira) ou Tombo..."
             value={searchMatricula}
             onChange={(e) => setSearchMatricula(e.target.value)}
             className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-xs focus:outline-none focus:border-blue-600 shadow-xs"
           />
         </div>
 
-        <div className="flex items-center space-x-2">
-          <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+          <div className="flex flex-wrap rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
             <button
               onClick={() => setFiltroTipo('todos')}
               className={`px-3 py-1 rounded-md transition ${
@@ -103,9 +111,25 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
               Todas ({cautelas.length})
             </button>
             <button
+              onClick={() => setFiltroTipo('individuais')}
+              className={`px-3 py-1 rounded-md transition ${
+                filtroTipo === 'individuais' ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Individuais (PM)
+            </button>
+            <button
+              onClick={() => setFiltroTipo('subunidades')}
+              className={`px-3 py-1 rounded-md transition ${
+                filtroTipo === 'subunidades' ? 'bg-white text-indigo-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Subunidades / DPMs
+            </button>
+            <button
               onClick={() => setFiltroTipo('Temporária')}
               className={`px-3 py-1 rounded-md transition ${
-                filtroTipo === 'Temporária' ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                filtroTipo === 'Temporária' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Temporárias
@@ -140,17 +164,17 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
       </div>
 
       {/* Table view of Cautelas */}
-      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-        <table className="w-full text-left text-xs">
+      <div className="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-xs">
+        <table className="w-full text-left text-xs min-w-[900px]">
           <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
             <tr>
-              <th className="p-3">ID / Retirada</th>
-              <th className="p-3">Policial Militar (Recebedor)</th>
-              <th className="p-3">Matrícula</th>
-              <th className="p-3">Modalidade</th>
+              <th className="p-3 whitespace-nowrap">ID / Retirada</th>
+              <th className="p-3 whitespace-nowrap">Destinatário & Responsável</th>
+              <th className="p-3 whitespace-nowrap">Matrícula PM</th>
+              <th className="p-3 whitespace-nowrap">Modalidade</th>
               <th className="p-3">Equipamentos & Munições Cauteladas</th>
-              <th className="p-3">Previsão / Status</th>
-              <th className="p-3 text-right">Ações de Baixa</th>
+              <th className="p-3 whitespace-nowrap">Previsão / Status</th>
+              <th className="p-3 text-right whitespace-nowrap">Ações da Cautela</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -168,14 +192,16 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                   c.status === 'Atrasada' ||
                   (c.tipo === 'Temporária' && c.data_prevista_devolucao && new Date(c.data_prevista_devolucao) < now);
 
+                const isSubunidade = c.destinatario_tipo === 'UNIDADE' || !!c.id_unidade;
+
                 return (
                   <tr
                     key={`${c.id_cautela || 'caut'}-${cIdx}`}
                     className={`transition hover:bg-slate-50/80 ${
-                      isAtrasada ? 'bg-red-50/40' : ''
+                      isAtrasada ? 'bg-red-50/40' : isSubunidade ? 'bg-indigo-50/20' : ''
                     }`}
                   >
-                    <td className="p-3">
+                    <td className="p-3 align-middle whitespace-nowrap">
                       <div className="font-bold text-slate-900">
                         #{String(c.id_cautela).padStart(3, '0')}
                       </div>
@@ -184,37 +210,63 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                       </div>
                     </td>
 
-                    <td className="p-3">
-                      <div className="font-bold text-slate-900 flex items-center space-x-1.5">
-                        <User className="w-3.5 h-3.5 text-blue-600" />
-                        <span>
-                          {c.policial.patente} {c.policial.nome_guerra}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        {c.policial.nome_completo}
-                      </div>
+                    <td className="p-3 align-middle">
+                      {isSubunidade ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900 font-bold text-[11px] border border-indigo-200">
+                              <Building2 className="w-3 h-3 text-indigo-700" />
+                              <span>{c.unidade ? c.unidade.nome : 'Subunidade'}</span>
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-700 flex items-center space-x-1">
+                            <span className="text-slate-400">Encarregado:</span>
+                            <span className="font-bold text-slate-900">
+                              {c.policial.patente} {c.policial.nome_guerra}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-bold text-slate-900 flex items-center space-x-1.5">
+                            <User className="w-3.5 h-3.5 text-blue-600" />
+                            <span>
+                              {c.policial.patente} {c.policial.nome_guerra}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {c.policial.nome_completo}
+                          </div>
+                        </div>
+                      )}
                     </td>
 
-                    <td className="p-3 font-mono font-bold text-slate-800">
+                    <td className="p-3 align-middle whitespace-nowrap font-mono font-bold text-slate-800">
                       <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
                         {c.policial.matricula}
                       </span>
                     </td>
 
-                    <td className="p-3">
-                      <span
-                        className={`inline-block text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                          c.tipo === 'Permanente'
-                            ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                            : 'bg-blue-100 text-blue-800 border border-blue-200'
-                        }`}
-                      >
-                        {c.tipo}
-                      </span>
+                    <td className="p-3 align-middle whitespace-nowrap">
+                      <div className="space-y-1">
+                        <span
+                          className={`inline-block text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                            c.tipo === 'Permanente'
+                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                              : 'bg-blue-100 text-blue-800 border border-blue-200'
+                          }`}
+                        >
+                          {c.tipo}
+                        </span>
+                        {isSubunidade && (
+                          <div className="text-[10px] text-indigo-700 font-semibold">
+                            Carga de DPM / Turno
+                          </div>
+                        )}
+                      </div>
                     </td>
 
-                    <td className="p-3">
+                    <td className="p-3 align-middle">
                       <div className="space-y-1">
                         {c.itens.map((ci, idx) => (
                           <div key={idx} className="flex items-center space-x-1.5 text-slate-800">
@@ -237,7 +289,7 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                       </div>
                     </td>
 
-                    <td className="p-3">
+                    <td className="p-3 align-middle whitespace-nowrap">
                       {isAtrasada ? (
                         <div>
                           <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[10px]">
@@ -251,7 +303,9 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                           )}
                         </div>
                       ) : c.tipo === 'Permanente' ? (
-                        <span className="text-[11px] text-purple-700 font-semibold">Carga Pessoal</span>
+                        <span className="text-[11px] text-purple-700 font-semibold">
+                          {isSubunidade ? 'Carga Subunidade' : 'Carga Pessoal'}
+                        </span>
                       ) : (
                         <div>
                           <span className="inline-flex items-center space-x-1 text-emerald-700 font-semibold text-[11px]">
@@ -267,12 +321,12 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                       )}
                     </td>
 
-                    <td className="p-3 text-right">
-                      <div className="flex items-center justify-end space-x-1.5 flex-wrap gap-y-1">
+                    <td className="p-3 text-right align-middle whitespace-nowrap">
+                      <div className="inline-flex items-center justify-end gap-1.5">
                         {canManage && onRegistrarDisparo && (
                           <button
                             onClick={() => onRegistrarDisparo(c)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-semibold border border-amber-200 transition"
+                            className="inline-flex items-center gap-1 h-8 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 transition shadow-2xs hover:-translate-y-0.5 cursor-pointer"
                             title="Registrar Disparo / Reposição de Munições desta Cautela"
                           >
                             <Crosshair className="w-3.5 h-3.5 text-amber-700" />
@@ -282,7 +336,7 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                         {canManage && onRegistrarExtravio && (
                           <button
                             onClick={() => onRegistrarExtravio(c)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-semibold border border-rose-200 transition"
+                            className="inline-flex items-center gap-1 h-8 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold border border-rose-200 transition shadow-2xs hover:-translate-y-0.5 cursor-pointer"
                             title="Registrar Extravio / BO de Itens desta Cautela"
                           >
                             <AlertOctagon className="w-3.5 h-3.5 text-rose-700" />
@@ -291,16 +345,17 @@ export const TabelaCautelasAndamento: React.FC<TabelaCautelasAndamentoProps> = (
                         )}
                         <button
                           onClick={() => onVerComprovante(c)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
-                          title="Imprimir / Ver Comprovante"
+                          className="inline-flex items-center gap-1 h-8 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition shadow-2xs hover:-translate-y-0.5 cursor-pointer"
+                          title="Imprimir / Ver Comprovante do Termo de Cautela"
                         >
-                          <Printer className="w-3.5 h-3.5" />
+                          <Printer className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Comprovante</span>
                         </button>
                         {canManage && (
                           <button
                             onClick={() => onDarBaixa(c)}
-                            className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition"
-                            title="Dar baixa no material"
+                            className="inline-flex items-center gap-1.5 h-8 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition hover:-translate-y-0.5 cursor-pointer"
+                            title="Dar baixa / devolução no material"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>Dar Baixa</span>

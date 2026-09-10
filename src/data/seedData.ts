@@ -21,16 +21,23 @@ import {
 } from '../types/database';
 
 export const SEED_UNIDADES: Unidade[] = [
-  // Sede
+  // Sede & Setores Especializados
   { id_unidade: 1, nome: '6º BPM - Sede Caicó (Comando/EMG)', tipo_unidade: 'BPM', id_unidade_superior: null },
   { id_unidade: 2, nome: 'Reserva de Armamento / Sala de Meios', tipo_unidade: 'Setor', id_unidade_superior: 1 },
   { id_unidade: 3, nome: 'Seção de Logística e Patrimônio (P4)', tipo_unidade: 'Setor', id_unidade_superior: 1 },
   { id_unidade: 4, nome: 'Central de Operações e Rádio (P3/COPOM)', tipo_unidade: 'Setor', id_unidade_superior: 1 },
+  { id_unidade: 5, nome: 'Pelotão ROCAM / Força Tática (6º BPM)', tipo_unidade: 'Pelotão', id_unidade_superior: 1 },
+  { id_unidade: 6, nome: 'Pelotão de Trânsito / GMR (6º BPM)', tipo_unidade: 'Pelotão', id_unidade_superior: 1 },
+  { id_unidade: 7, nome: 'Guarda do Quartel / Permanência (6º BPM)', tipo_unidade: 'Setor', id_unidade_superior: 1 },
+  { id_unidade: 8, nome: 'Seção de Inteligência (P2 / 6º BPM)', tipo_unidade: 'Setor', id_unidade_superior: 1 },
 
   // 1ª CPM (Caicó)
   { id_unidade: 10, nome: '1ª CPM (Caicó - Sede)', tipo_unidade: 'CPM', id_unidade_superior: 1 },
   { id_unidade: 11, nome: 'DPM Ipueira', tipo_unidade: 'DPM', id_unidade_superior: 10 },
   { id_unidade: 12, nome: 'DPM São João do Sabugi', tipo_unidade: 'DPM', id_unidade_superior: 10 },
+  { id_unidade: 13, nome: 'DPM São Fernando', tipo_unidade: 'DPM', id_unidade_superior: 10 },
+  { id_unidade: 14, nome: 'DPM Timbaúba dos Batistas', tipo_unidade: 'DPM', id_unidade_superior: 10 },
+  { id_unidade: 15, nome: 'DPM Serra Negra do Norte', tipo_unidade: 'DPM', id_unidade_superior: 10 },
 
   // 2ª CPM (Jardim do Seridó)
   { id_unidade: 20, nome: '2ª CPM (Jardim do Seridó - Sede)', tipo_unidade: 'CPM', id_unidade_superior: 1 },
@@ -41,6 +48,7 @@ export const SEED_UNIDADES: Unidade[] = [
   // 3ª CPM (Jucurutu)
   { id_unidade: 30, nome: '3ª CPM (Jucurutu - Sede)', tipo_unidade: 'CPM', id_unidade_superior: 1 },
   { id_unidade: 31, nome: 'DPM Santana do Matos', tipo_unidade: 'DPM', id_unidade_superior: 30 },
+  { id_unidade: 32, nome: 'DPM Florânia', tipo_unidade: 'DPM', id_unidade_superior: 30 },
 ];
 
 export const SEED_POLICIAIS: Policial[] = [

@@ -250,9 +250,13 @@ export interface AlocacaoItem {
   id_item: number;
 }
 
+export type DestinatarioCautelaTipo = 'POLICIAL' | 'UNIDADE';
+
 export interface Cautela {
   id_cautela: number;
   id_policial: number;
+  id_unidade?: number | null;
+  destinatario_tipo?: DestinatarioCautelaTipo;
   id_operador_entrega: string; // UUID
   id_operador_devolucao?: string | null; // UUID
   tipo: TipoCautela;
@@ -290,6 +294,9 @@ export interface ItemComDetalhes extends ItemPatrimonio {
     policial_nome: string;
     policial_grad: string;
     policial_matricula: string;
+    id_unidade?: number | null;
+    unidade_nome?: string | null;
+    destinatario_tipo?: DestinatarioCautelaTipo;
     data_retirada: string;
     tipo: TipoCautela;
     status: StatusCautela;
@@ -304,6 +311,7 @@ export interface ItemComDetalhes extends ItemPatrimonio {
 
 export interface CautelaCompleta extends Cautela {
   policial: Policial;
+  unidade?: Unidade | null;
   operador_entrega: {
     operador: OperadorSistema;
     policial: Policial;

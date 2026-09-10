@@ -695,4 +695,280 @@ export class PdfReportService {
     this.addFooter(doc, opNome);
     doc.save(`Estrutura_Organizacional_6BPM_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
+
+  // 7. Termo Geral de Carga & Passagem de Comando de Subunidade / Destacamento
+  public static gerarTermoPassagemComandoSubunidade(params: {
+    db: DatabaseEngine;
+    id_unidade: number;
+    comandanteSucedido?: { posto: string; nome: string; matricula: string };
+    comandanteSucessor?: { posto: string; nome: string; matricula: string };
+    motivoPassagem?: string;
+  }) {
+    const { db, id_unidade, comandanteSucedido, comandanteSucessor, motivoPassagem } = params;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const { operador, policial } = db.getCurrentOperador();
+    const opNome = `${policial.patente} ${policial.nome_guerra} (${operador.perfil_acesso})`;
+
+    const unidade = db.getUnidades().find((u) => u.id_unidade === id_unidade);
+    const nomeUnidade = unidade ? unidade.nome : `Subunidade Nº ${id_unidade}`;
+
+    this.addHeader(
+      doc,
+      'TERMO GERAL DE INVENTÁRIO E PASSAGEM DE COMANDO / CARGA',
+      `${nomeUnidade.toUpperCase()} • 6º BATALHÃO DE POLÍCIA MILITAR`
+    );
+
+    let currentY = 50;
+
+    // Descriptive text paragraph
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59);
+
+    const motivo = motivoPassagem || 'Passagem de Comando / Assunção de Função e Conferência Geral de Carga Bélica e Patrimonial';
+    const textIntro = `Aos ${new Date().toLocaleDateString('pt-BR')}, nas dependências do 6º BPM (Caicó/RN), procedeu-se à conferência física e documental de todo o material bélico, coletes de proteção balística, munições e equipamentos táticos sob a tutela e carga da ${nomeUnidade}, para fins de: ${motivo}.`;
+
+    const splitIntro = doc.splitTextToSize(textIntro, 182);
+    doc.text(splitIntro, 14, currentY);
+    currentY += splitIntro.length * 4.5 + 4;
+
+    // Fetch active cautelas for this unit
+    const todasCautelas = db.getCautelasCompletas();
+    const cautelasAtivasUnidade = todasCautelas.filter(
+      (c) =>
+        (c.id_unidade === id_unidade || c.unidade?.id_unidade === id_unidade) &&
+        (c.status === 'Aberta' || c.status === 'Atrasada')
+    );
+
+    // Collect all unique items
+    const itensArmas: any[] = [];
+    const itensColetes: any[] = [];
+    const itensComunicacao: any[] = [];
+    const itensOutros: any[] = [];
+    const lotesMunicao: Map<number, { tipo: string; calibre?: string; lote?: string; qtd: number }> = new Map();
+
+    for (const c of cautelasAtivasUnidade) {
+      for (const ci of c.itens) {
+        const it = ci.item;
+        if (it.modulo === 'Armas' && (it.tipo_item.toLowerCase().includes('pistola') || it.tipo_item.toLowerCase().includes('fuzil') || it.tipo_item.toLowerCase().includes('espingarda') || it.tipo_item.toLowerCase().includes('carabina') || it.tipo_item.toLowerCase().includes('revólver'))) {
+          itensArmas.push({ item: it, cautela: c, obs: ci.observacao_estado_entrega });
+        } else if (it.tipo_item.toLowerCase().includes('colete')) {
+          itensColetes.push({ item: it, cautela: c, obs: ci.observacao_estado_entrega });
+        } else if (it.modulo === 'Comunicação' || it.tipo_item.toLowerCase().includes('rádio') || it.tipo_item.toLowerCase().includes('ht')) {
+          itensComunicacao.push({ item: it, cautela: c, obs: ci.observacao_estado_entrega });
+        } else {
+          itensOutros.push({ item: it, cautela: c, obs: ci.observacao_estado_entrega });
+        }
+      }
+
+      for (const cl of c.lotes) {
+        const lId = cl.lote?.id_lote;
+        if (lId === undefined) continue;
+        const current = lotesMunicao.get(lId) || {
+          tipo: cl.lote?.tipo_item || 'Munição',
+          calibre: cl.lote?.calibre || '-',
+          lote: cl.lote?.lote_fabricacao || '-',
+          qtd: 0,
+        };
+        current.qtd += cl.quantidade;
+        lotesMunicao.set(lId, current);
+      }
+    }
+
+    // 1. Armas de Fogo
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`1. ARMAMENTO LETAL E DE PORTE (${itensArmas.length} armas vinculadas)`, 14, currentY);
+    currentY += 4;
+
+    if (itensArmas.length > 0) {
+      const rowsArmas = itensArmas.map((ia) => [
+        ia.item.tipo_item,
+        `${ia.item.marca || ''} ${ia.item.modelo || ''}`.trim(),
+        ia.item.detalhesArma?.calibre || ia.item.calibre || '-',
+        ia.item.numero_serie || '-',
+        ia.item.numero_tombo || '-',
+        `Carregadores: ${ia.item.detalhesArma?.qtd_carregadores ?? 3}`,
+        'Em Carga Ativa',
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Tipo', 'Marca / Modelo', 'Calibre', 'Nº Série', 'Tombo BPM', 'Acessórios', 'Situação']],
+        body: rowsArmas,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+        bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { cellPadding: 1.5 },
+        margin: { left: 14, right: 14 },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 7;
+    } else {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Nenhum armamento com carga registrada no momento.', 14, currentY);
+      currentY += 6;
+    }
+
+    // 2. Coletes Balísticos
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`2. COLETES DE PROTEÇÃO BALÍSTICA (${itensColetes.length} coletes)`, 14, currentY);
+    currentY += 4;
+
+    if (itensColetes.length > 0) {
+      const rowsColetes = itensColetes.map((ic) => [
+        ic.item.tipo_item,
+        ic.item.marca || '-',
+        ic.item.numero_serie || '-',
+        ic.item.numero_tombo || '-',
+        ic.item.detalhesColete?.tamanho || '-',
+        ic.item.detalhesColete?.nivel_protecao || 'III-A',
+        ic.item.detalhesColete?.data_validade || '-',
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Item', 'Marca / Fabricante', 'Nº Série Capa/Painel', 'Tombo', 'Tam.', 'Nível', 'Validade']],
+        body: rowsColetes,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+        bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { cellPadding: 1.5 },
+        margin: { left: 14, right: 14 },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 7;
+    } else {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Nenhum colete balístico registrado nesta subunidade.', 14, currentY);
+      currentY += 6;
+    }
+
+    // 3. Munições CBC em Dotação
+    const arrayLotes = Array.from(lotesMunicao.values());
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    const totalMunicoes = arrayLotes.reduce((acc, curr) => acc + curr.qtd, 0);
+    doc.text(`3. DOTAÇÃO DE MUNIÇÕES (${totalMunicoes} unidades cartuchadas)`, 14, currentY);
+    currentY += 4;
+
+    if (arrayLotes.length > 0) {
+      const rowsMunicoes = arrayLotes.map((lm) => [
+        lm.tipo,
+        lm.calibre || '-',
+        lm.lote || '-',
+        `${lm.qtd} un`,
+        'Dotação Operacional da Fração',
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Tipo de Munição', 'Calibre', 'Lote Fabricação CBC', 'Qtd Cautelada', 'Finalidade']],
+        body: rowsMunicoes,
+        theme: 'grid',
+        headStyles: { fillColor: [15, 118, 110], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+        bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { cellPadding: 1.5 },
+        margin: { left: 14, right: 14 },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 7;
+    } else {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Nenhuma dotação de munição registrada.', 14, currentY);
+      currentY += 6;
+    }
+
+    // Check remaining space on page for signatures
+    const pageHeight = doc.internal.pageSize.getHeight();
+    if (currentY > pageHeight - 55) {
+      doc.addPage();
+      currentY = 25;
+    }
+
+    // Declaration statement
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    const termoDeclaracao = `Declaram os signatários que todos os itens discriminados neste termo foram rigorosamente conferidos fisicamente quanto ao número de série, tombo, integridade e funcionamento, assumindo o novo Comandante/Encarregado a total responsabilidade pela guarda, zelo e emprego operacional do acervo.`;
+    const splitDecl = doc.splitTextToSize(termoDeclaracao, 182);
+    doc.text(splitDecl, 14, currentY);
+    currentY += splitDecl.length * 4 + 14;
+
+    // Military Signature Blocks (3 columns or 2 rows)
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const colWidth = (pageWidth - 28) / 2;
+
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.4);
+
+    // Left: Sucedido (Entregando)
+    doc.line(14, currentY, 14 + colWidth - 8, currentY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(
+      comandanteSucedido?.nome ? `${comandanteSucedido.posto} ${comandanteSucedido.nome}` : 'COMANDANTE / ENCARREGADO SUCEDIDO',
+      14 + (colWidth - 8) / 2,
+      currentY + 4,
+      { align: 'center' }
+    );
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      comandanteSucedido?.matricula ? `Matrícula: ${comandanteSucedido.matricula} • Transmitente da Carga` : 'Transmitente da Carga',
+      14 + (colWidth - 8) / 2,
+      currentY + 7.5,
+      { align: 'center' }
+    );
+
+    // Right: Sucessor (Recebendo)
+    const rightX = 14 + colWidth + 8;
+    doc.line(rightX, currentY, pageWidth - 14, currentY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(
+      comandanteSucessor?.nome ? `${comandanteSucessor.posto} ${comandanteSucessor.nome}` : 'COMANDANTE / ENCARREGADO SUCESSOR',
+      rightX + (colWidth - 8) / 2,
+      currentY + 4,
+      { align: 'center' }
+    );
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      comandanteSucessor?.matricula ? `Matrícula: ${comandanteSucessor.matricula} • Recebedor / Fiel Depositário` : 'Recebedor / Fiel Depositário',
+      rightX + (colWidth - 8) / 2,
+      currentY + 7.5,
+      { align: 'center' }
+    );
+
+    // Bottom Center: Armeiro / Fiscal do P4
+    currentY += 18;
+    const centerLineX = pageWidth / 2 - 35;
+    doc.line(centerLineX, currentY, centerLineX + 70, currentY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${policial.patente} ${policial.nome_guerra} - Matrícula ${policial.matricula}`, pageWidth / 2, currentY + 4, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Armeiro / Oficial Fiscal de Material e Patrimônio (P/4)', pageWidth / 2, currentY + 7.5, { align: 'center' });
+
+    this.addFooter(doc, opNome);
+    doc.save(`Passagem_Comando_${nomeUnidade.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
 }

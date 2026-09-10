@@ -23,6 +23,9 @@ import {
   History,
 } from 'lucide-react';
 import { ModalNovaCautela } from '../cautela/ModalNovaCautela';
+import { ModalCargaSubunidade } from '../cautela/ModalCargaSubunidade';
+import { ModalPassagemComando } from '../cautela/ModalPassagemComando';
+import { PainelCargasSubunidades } from '../cautela/PainelCargasSubunidades';
 import { ModalDevolucao } from '../cautela/ModalDevolucao';
 import { TermoCautelaPrint } from '../cautela/TermoCautelaPrint';
 import { ModalNovoItem } from '../item/ModalNovoItem';
@@ -34,6 +37,7 @@ import { ArmasGraficosAnalytics } from '../armas/ArmasGraficosAnalytics';
 import { TabelaCautelasAndamento } from '../cautela/TabelaCautelasAndamento';
 import { PdfReportService } from '../../services/pdfReportService';
 import { CautelaCompleta, ItemComDetalhes, EstoqueLote } from '../../types/database';
+import { Building2 } from 'lucide-react';
 
 export const ArmasModule: React.FC = () => {
   const { db, policiais, lotes, registrosExtravio, registrosDisparo, canCreateOrEditItems, canManageCautelas } = useDatabase();
@@ -41,7 +45,7 @@ export const ArmasModule: React.FC = () => {
   const canCreateOrEdit = canCreateOrEditItems('Armas');
 
   const [activeSubTab, setActiveSubTab] = useState<
-    'dashboard' | 'cautelas' | 'armas' | 'municoes' | 'disparos' | 'extravios' | 'permanentes'
+    'dashboard' | 'cautelas' | 'subunidades' | 'armas' | 'municoes' | 'disparos' | 'extravios' | 'permanentes'
   >('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCalibre, setFilterCalibre] = useState('todos');
@@ -49,6 +53,9 @@ export const ArmasModule: React.FC = () => {
 
   // Modals
   const [showNovaCautelaModal, setShowNovaCautelaModal] = useState(false);
+  const [showCargaSubunidadeModal, setShowCargaSubunidadeModal] = useState(false);
+  const [showPassagemComandoModal, setShowPassagemComandoModal] = useState(false);
+  const [passagemComandoUnidadeId, setPassagemComandoUnidadeId] = useState<number | undefined>(undefined);
   const [showNovoItemModal, setShowNovoItemModal] = useState(false);
   const [showRegistrarExtravioModal, setShowRegistrarExtravioModal] = useState(false);
   const [showRegistrarDisparoModal, setShowRegistrarDisparoModal] = useState(false);
@@ -176,16 +183,17 @@ export const ArmasModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Action CTAs: Apenas Nova Cautela e Cadastrar Material destacados */}
+        {/* Action CTAs: Limpo e direto para o Armeiro */}
         <div className="flex flex-wrap items-center gap-3">
           {canManage && (
             <button
               id="btn-abrir-nova-cautela"
               onClick={() => setShowNovaCautelaModal(true)}
               className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-md shadow-emerald-600/30 transition transform hover:-translate-y-0.5 focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              title="Cautelar armamento e munições diretamente para um policial militar"
             >
               <Plus className="w-5 h-5" />
-              <span>NOVA CAUTELA</span>
+              <span>NOVA CAUTELA (PM)</span>
             </button>
           )}
           {canCreateOrEdit && (
@@ -398,6 +406,17 @@ export const ArmasModule: React.FC = () => {
           )}
         </button>
         <button
+          onClick={() => setActiveSubTab('subunidades')}
+          className={`px-3 py-2 rounded-lg transition flex items-center space-x-1.5 ${
+            activeSubTab === 'subunidades'
+              ? 'bg-indigo-700 text-white shadow-xs font-bold'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          <span>Cargas Subunidades (DPMs)</span>
+        </button>
+        <button
           onClick={() => setActiveSubTab('armas')}
           className={`px-3 py-2 rounded-lg transition ${
             activeSubTab === 'armas'
@@ -537,6 +556,19 @@ export const ArmasModule: React.FC = () => {
             onRegistrarExtravio={(c) => {
               setSelectedCautelaForExtravio(c);
               setShowRegistrarExtravioModal(true);
+            }}
+          />
+        </div>
+      )}
+
+      {/* TAB CONTENT: Subunidades (DPMs e Pelotões) */}
+      {activeSubTab === 'subunidades' && (
+        <div className="space-y-4">
+          <PainelCargasSubunidades
+            onAbrirNovaCarga={() => setShowCargaSubunidadeModal(true)}
+            onAbrirPassagemComando={(unidadeId) => {
+              setPassagemComandoUnidadeId(unidadeId);
+              setShowPassagemComandoModal(true);
             }}
           />
         </div>
@@ -1209,7 +1241,7 @@ export const ArmasModule: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Nova Cautela */}
+      {/* MODAL: Nova Cautela Individual */}
       {showNovaCautelaModal && (
         <ModalNovaCautela
           modulo="Armas"
@@ -1218,6 +1250,26 @@ export const ArmasModule: React.FC = () => {
             setShowNovaCautelaModal(false);
             setSuccessMessage(`Cautela #${String(id_cautela).padStart(3, '0')} gerada e registrada com sucesso no sistema!`);
           }}
+        />
+      )}
+
+      {/* MODAL: Nova Carga de Subunidade / DPM */}
+      {showCargaSubunidadeModal && (
+        <ModalCargaSubunidade
+          modulo="Armas"
+          onClose={() => setShowCargaSubunidadeModal(false)}
+          onSuccess={(id_cautela) => {
+            setShowCargaSubunidadeModal(false);
+            setSuccessMessage(`Termo de Carga para Subunidade #${String(id_cautela).padStart(3, '0')} gerado com sucesso!`);
+          }}
+        />
+      )}
+
+      {/* MODAL: Passagem de Comando */}
+      {showPassagemComandoModal && (
+        <ModalPassagemComando
+          initialUnidadeId={passagemComandoUnidadeId}
+          onClose={() => setShowPassagemComandoModal(false)}
         />
       )}
 
