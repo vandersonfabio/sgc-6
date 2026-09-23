@@ -212,7 +212,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             <strong>SGC-6 • 6º Batalhão de Polícia Militar</strong> • Caicó/RN • Seridó Potiguar
           </div>
           <div className="text-slate-400 text-[11px]">
-            Seção de Logística e Patrimônio (P4) • Diretoria de Apoio Logístico (DAL / PMRN)
+            Seção de Logística e Patrimônio (P4) • 6º BPM
           </div>
         </div>
       </footer>

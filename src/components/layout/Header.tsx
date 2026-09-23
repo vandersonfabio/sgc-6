@@ -10,9 +10,11 @@ import {
   UserCog,
   User,
   BadgeCheck,
+  KeyRound,
 } from 'lucide-react';
 import { useDatabase } from '../../services/store';
 import { PerfilAcesso } from '../../types/database';
+import { ModalAlterarSenha } from '../auth/ModalAlterarSenha';
 
 interface HeaderProps {
   activeModule?: string;
@@ -22,6 +24,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ activeModule, onNavigateToOperadores }) => {
   const { currentOperador, currentPolicial, perfil, logout, canManageOperadores } = useDatabase();
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
   const getPerfilBadge = (p: PerfilAcesso) => {
     switch (p) {
@@ -146,6 +149,21 @@ export const Header: React.FC<HeaderProps> = ({ activeModule, onNavigateToOperad
                 </div>
               )}
 
+              {/* Password change option for any logged-in operator */}
+              <div className="p-2 border-b border-slate-800">
+                <button
+                  id="btn-alterar-minha-senha"
+                  onClick={() => {
+                    setShowRoleMenu(false);
+                    setShowChangePasswordModal(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4 text-amber-400" />
+                  <span>Alterar Minha Senha</span>
+                </button>
+              </div>
+
               {/* Logout Option */}
               <div className="p-2 pt-2">
                 <button
@@ -171,6 +189,12 @@ export const Header: React.FC<HeaderProps> = ({ activeModule, onNavigateToOperad
           <span className="hidden lg:inline text-xs font-semibold">Sair</span>
         </button>
       </div>
+
+      {/* Modal Alterar Senha */}
+      <ModalAlterarSenha
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+      />
     </header>
   );
 };

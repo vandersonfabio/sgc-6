@@ -611,6 +611,9 @@ export class DatabaseEngine {
     save('auth_session', 'true');
     save('operadores', this.operadores);
 
+    // Persist login to Supabase so ultimo_login is permanently saved in the database
+    pushOperadorToSupabase(op).catch((e) => console.warn('[Supabase] Falha ao registrar ultimo_login:', e));
+
     const pol = this.policiais.find((p) => p.id_policial === op.id_policial);
     this.registrarAuditoria('LOGIN_SISTEMA', 'operadores', {
       id_operador: op.id_operador,
@@ -748,6 +751,53 @@ export class DatabaseEngine {
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Erro ao atualizar dados do operador.' };
+    }
+  }
+
+  public alterarPropriaSenha(
+    senhaAtual: string,
+    novaSenha: string
+  ): { success: boolean; error?: string } {
+    try {
+      const { operador, policial } = this.getCurrentOperador();
+      if (!operador) {
+        return { success: false, error: 'Sessão inválida ou operador não identificado.' };
+      }
+
+      if (!senhaAtual) {
+        return { success: false, error: 'Informe a senha atual.' };
+      }
+
+      if (!novaSenha || novaSenha.trim().length < 3) {
+        return { success: false, error: 'A nova senha deve ter no mínimo 3 caracteres.' };
+      }
+
+      // Validar senha atual
+      if (operador.senha && operador.senha !== senhaAtual.trim()) {
+        return { success: false, error: 'A senha atual informada está incorreta.' };
+      }
+
+      const op = this.operadores.find((o) => o.id_operador === operador.id_operador);
+      if (!op) {
+        return { success: false, error: 'Operador não encontrado na base.' };
+      }
+
+      op.senha = novaSenha.trim();
+
+      this.registrarAuditoria('ALTERACAO_SENHA_PROPRIA', 'operadores', {
+        id_operador: op.id_operador,
+        policial: policial ? `${policial.patente} ${policial.nome_guerra}` : 'N/A',
+        email: op.email,
+      });
+
+      this.persistAll();
+      this.notify();
+
+      pushOperadorToSupabase(op).catch((e) => console.warn('Supabase operador password sync error:', e));
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro ao alterar a senha.' };
     }
   }
 
@@ -3199,6 +3249,7 @@ export function useDatabase() {
     logout: () => db.logout(),
     cadastrarOperador: (dados: any) => db.cadastrarOperador(dados),
     editarOperador: (id: string, dados: any) => db.editarOperador(id, dados),
+    alterarPropriaSenha: (senhaAtual: string, novaSenha: string) => db.alterarPropriaSenha(senhaAtual, novaSenha),
     excluirOperador: (id: string) => db.excluirOperador(id),
     currentOperador: currentOpInfo?.operador,
     currentOperator,

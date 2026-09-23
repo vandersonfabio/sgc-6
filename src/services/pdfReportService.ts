@@ -314,13 +314,12 @@ export class PdfReportService {
     doc.setTextColor(15, 23, 42);
     doc.text('3. INVENTÁRIO NOMINATIVO DA FROTA VEICULAR', 14, currentY);
 
-    const tableRows = itens.map((it) => {
+    // Preparar lista enriquecida com local de alocação para agrupamento e ordenação
+    const itensEnriquecidos = itens.map((it) => {
       const vtr = it.detalhe_viatura;
       const aloc = alocacoes.find(
         (a) => a.itens.some((itAloc) => itAloc.id_item === it.id_item) && a.status === 'Ativa'
       );
-      
-      // Conforme solicitado: Não precisa mostrar no relatório o usuário que fez a alocação
       const destino = aloc ? aloc.unidade.nome : 'Pátio 6º BPM (Sede)';
 
       let statusLabel: string = it.status;
@@ -330,14 +329,67 @@ export class PdfReportService {
         statusLabel = `${it.status} (${diasStr})${it.motivo_manutencao ? ` - ${it.motivo_manutencao}` : ''}`;
       }
 
-      return [
-        vtr?.prefixo || 'VTR-0600',
-        vtr?.placa || '-',
-        it.tipo_item,
-        `${it.marca || ''} ${it.modelo || ''}`.trim(),
-        statusLabel,
+      return {
+        it,
+        vtr,
         destino,
-      ];
+        statusLabel,
+        tipo: it.tipo_item || '',
+        tombo: it.numero_tombo || '',
+        serial: it.numero_serie || vtr?.placa || '',
+      };
+    });
+
+    // Agrupar por local de alocação e ordenar cada grupo por: Tipo -> Nº de Tombo -> Serial
+    const gruposPorLocalMap = new Map<string, typeof itensEnriquecidos>();
+    itensEnriquecidos.forEach((elem) => {
+      const loc = elem.destino;
+      if (!gruposPorLocalMap.has(loc)) {
+        gruposPorLocalMap.set(loc, []);
+      }
+      gruposPorLocalMap.get(loc)!.push(elem);
+    });
+
+    // Ordenar as chaves de locais (Sede primeiro ou alfabética)
+    const locaisOrdenados = Array.from(gruposPorLocalMap.keys()).sort((a, b) => {
+      if (a.toLowerCase().includes('sede') || a.toLowerCase().includes('pátio')) return -1;
+      if (b.toLowerCase().includes('sede') || b.toLowerCase().includes('pátio')) return 1;
+      return a.localeCompare(b, 'pt-BR');
+    });
+
+    const tableRows: any[] = [];
+    locaisOrdenados.forEach((loc) => {
+      const itensDoGrupo = gruposPorLocalMap.get(loc) || [];
+      // Ordenação rigorosa: Tipo do Item -> Número de Tombo -> Serial (placa)
+      itensDoGrupo.sort((a, b) => {
+        const tipoComp = a.tipo.localeCompare(b.tipo, 'pt-BR');
+        if (tipoComp !== 0) return tipoComp;
+
+        const tomboComp = a.tombo.localeCompare(b.tombo, 'pt-BR', { numeric: true });
+        if (tomboComp !== 0) return tomboComp;
+
+        return a.serial.localeCompare(b.serial, 'pt-BR', { numeric: true });
+      });
+
+      // Linha separadora de grupo por local de alocação
+      tableRows.push([
+        {
+          content: `LOCAL DE ALOCAÇÃO: ${loc.toUpperCase()} (${itensDoGrupo.length} ${itensDoGrupo.length === 1 ? 'veículo' : 'veículos'})`,
+          colSpan: 6,
+          styles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 7.5 },
+        },
+      ]);
+
+      itensDoGrupo.forEach((elem) => {
+        tableRows.push([
+          elem.vtr?.prefixo || 'VTR-0600',
+          elem.vtr?.placa || '-',
+          elem.it.tipo_item,
+          `${elem.it.marca || ''} ${elem.it.modelo || ''}`.trim(),
+          elem.statusLabel,
+          elem.destino,
+        ]);
+      });
     });
 
     autoTable(doc, {
@@ -561,7 +613,8 @@ export class PdfReportService {
     };
     const headFill = themeColors[modulo] || [51, 65, 85];
 
-    const tableRows = itens.map((it) => {
+    // Preparar lista com especificação e local de alocação para agrupamento
+    const itensEnriquecidos = itens.map((it) => {
       let spec = it.observacao || '-';
       if (it.detalhe_comunicacao) {
         spec = `IMEI/MAC: ${it.detalhe_comunicacao.imei_mac || '-'} | Linha: ${it.detalhe_comunicacao.numero_linha || '-'}`;
@@ -569,22 +622,82 @@ export class PdfReportService {
         spec = it.detalhe_informatica.configuracao_resumida || '-';
       }
 
-      let lotacao = defaultSedeName;
+      // Local de alocação (ou posse/cautela)
+      let localAlocacao = defaultSedeName;
+      let lotacaoDetalhe = defaultSedeName;
+
       if (it.cautela_atual) {
-        lotacao = `Cautela #${it.cautela_atual.id_cautela}: ${it.cautela_atual.policial_grad} ${it.cautela_atual.policial_nome}`;
+        localAlocacao = 'Em Cautela Individual (Policial Militar)';
+        lotacaoDetalhe = `Cautela #${it.cautela_atual.id_cautela}: ${it.cautela_atual.policial_grad} ${it.cautela_atual.policial_nome}`;
       } else if (it.alocacao_atual) {
-        lotacao = it.alocacao_atual.unidade_nome;
+        localAlocacao = it.alocacao_atual.unidade_nome;
+        lotacaoDetalhe = it.alocacao_atual.unidade_nome;
       }
 
-      return [
-        it.numero_tombo || '-',
-        it.numero_serie || '-',
-        it.tipo_item,
-        `${it.marca || ''} ${it.modelo || ''}`.trim(),
+      return {
+        it,
         spec,
-        it.status,
-        lotacao,
-      ];
+        localAlocacao,
+        lotacaoDetalhe,
+        tipo: it.tipo_item || '',
+        tombo: it.numero_tombo || '',
+        serial: it.numero_serie || '',
+      };
+    });
+
+    // Agrupar por local de alocação
+    const gruposPorLocalMap = new Map<string, typeof itensEnriquecidos>();
+    itensEnriquecidos.forEach((elem) => {
+      const loc = elem.localAlocacao;
+      if (!gruposPorLocalMap.has(loc)) {
+        gruposPorLocalMap.set(loc, []);
+      }
+      gruposPorLocalMap.get(loc)!.push(elem);
+    });
+
+    // Ordenar as chaves de locais (Sede primeiro, depois outras unidades, e Cautela por último)
+    const locaisOrdenados = Array.from(gruposPorLocalMap.keys()).sort((a, b) => {
+      if (a === defaultSedeName) return -1;
+      if (b === defaultSedeName) return 1;
+      if (a.startsWith('Em Cautela')) return 1;
+      if (b.startsWith('Em Cautela')) return -1;
+      return a.localeCompare(b, 'pt-BR');
+    });
+
+    const tableRows: any[] = [];
+    locaisOrdenados.forEach((loc) => {
+      const itensDoGrupo = gruposPorLocalMap.get(loc) || [];
+      // Ordenação estrita: Tipo de Item -> Número de Tombo -> Serial
+      itensDoGrupo.sort((a, b) => {
+        const tipoComp = a.tipo.localeCompare(b.tipo, 'pt-BR');
+        if (tipoComp !== 0) return tipoComp;
+
+        const tomboComp = a.tombo.localeCompare(b.tombo, 'pt-BR', { numeric: true });
+        if (tomboComp !== 0) return tomboComp;
+
+        return a.serial.localeCompare(b.serial, 'pt-BR', { numeric: true });
+      });
+
+      // Linha de cabeçalho de grupo por local
+      tableRows.push([
+        {
+          content: `LOCAL DE ALOCAÇÃO: ${loc.toUpperCase()} (${itensDoGrupo.length} ${itensDoGrupo.length === 1 ? 'item' : 'itens'})`,
+          colSpan: 7,
+          styles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 7.5 },
+        },
+      ]);
+
+      itensDoGrupo.forEach((elem) => {
+        tableRows.push([
+          elem.it.numero_tombo || '-',
+          elem.it.numero_serie || '-',
+          elem.it.tipo_item,
+          `${elem.it.marca || ''} ${elem.it.modelo || ''}`.trim(),
+          elem.spec,
+          elem.it.status,
+          elem.lotacaoDetalhe,
+        ]);
+      });
     });
 
     autoTable(doc, {

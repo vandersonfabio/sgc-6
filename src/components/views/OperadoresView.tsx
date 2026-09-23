@@ -24,6 +24,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { PerfilAcesso, Policial, OperadorSistema } from '../../types/database';
+import { ModalAlterarSenha } from '../auth/ModalAlterarSenha';
 
 export const OperadoresView: React.FC = () => {
   const {
@@ -43,6 +44,7 @@ export const OperadoresView: React.FC = () => {
   const [filterPerfil, setFilterPerfil] = useState<string>('todos');
   const [showNovoModal, setShowNovoModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAlterarMinhaSenhaModal, setShowAlterarMinhaSenhaModal] = useState(false);
   const [selectedOp, setSelectedOp] = useState<OperadorSistema | null>(null);
   const [isSyncingAuth, setIsSyncingAuth] = useState(false);
 
@@ -244,8 +246,17 @@ export const OperadoresView: React.FC = () => {
           </div>
         </div>
 
-        {canManageOperadores && (
+        {canManageOperadores ? (
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <button
+              id="btn-alterar-minha-senha-view"
+              onClick={() => setShowAlterarMinhaSenhaModal(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold border border-amber-300 transition"
+              title="Altere sua própria senha de acesso de forma segura"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+              <span>Alterar Minha Senha</span>
+            </button>
             <button
               id="btn-sync-supabase-auth"
               onClick={handleSyncAuth}
@@ -263,6 +274,17 @@ export const OperadoresView: React.FC = () => {
             >
               <UserPlus className="w-4 h-4" />
               <span>Cadastrar Novo Operador</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-alterar-minha-senha-view-op"
+              onClick={() => setShowAlterarMinhaSenhaModal(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold border border-amber-300 transition"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+              <span>Alterar Minha Senha</span>
             </button>
           </div>
         )}
@@ -665,6 +687,11 @@ export const OperadoresView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Modal Alterar Senha Própria */}
+      <ModalAlterarSenha
+        isOpen={showAlterarMinhaSenhaModal}
+        onClose={() => setShowAlterarMinhaSenhaModal(false)}
+      />
     </div>
   );
 };

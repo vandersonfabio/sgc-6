@@ -848,6 +848,7 @@ export async function pushOperadorToSupabase(
           status: op.status,
           email: safeEmail,
           senha: op.senha || existingDbOp.senha || '123',
+          ultimo_login: op.ultimo_login || existingDbOp.ultimo_login || null,
         })
         .eq('id_operador', existingDbOp.id_operador)
         .select()
@@ -877,6 +878,7 @@ export async function pushOperadorToSupabase(
         status: op.status,
         email: safeEmail,
         senha: op.senha || '123',
+        ultimo_login: op.ultimo_login || null,
       };
       if (op.id_operador) {
         insertPayload.id_operador = op.id_operador;
