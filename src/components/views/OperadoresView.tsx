@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useDatabase } from '../../services/store';
 import {
   Shield,
@@ -50,6 +50,7 @@ export const OperadoresView: React.FC = () => {
 
   // Form states for new operator
   const [selectedPolicialId, setSelectedPolicialId] = useState<number>(0);
+  const [buscaPolicialNovo, setBuscaPolicialNovo] = useState('');
   const [novoEmail, setNovoEmail] = useState('');
   const [novoPerfil, setNovoPerfil] = useState<PerfilAcesso>('Armeiro');
   const [novaSenha, setNovaSenha] = useState('123');
@@ -82,7 +83,22 @@ export const OperadoresView: React.FC = () => {
     (p) => !operadores.some((op) => op.operador.id_policial === p.id_policial)
   );
 
+  const selectedPolicial = policiais.find((p) => p.id_policial === selectedPolicialId);
+
+  const policiaisDisponiveisFiltrados = useMemo(() => {
+    const term = buscaPolicialNovo.toLowerCase().trim();
+    if (!term) return policiaisDisponiveis;
+    return policiaisDisponiveis.filter(
+      (p) =>
+        (p.nome_guerra || '').toLowerCase().includes(term) ||
+        (p.nome_completo || '').toLowerCase().includes(term) ||
+        (p.matricula || '').toLowerCase().includes(term) ||
+        (p.patente || '').toLowerCase().includes(term)
+    );
+  }, [policiaisDisponiveis, buscaPolicialNovo]);
+
   const handleOpenNovo = () => {
+    setBuscaPolicialNovo('');
     if (policiaisDisponiveis.length > 0) {
       const first = policiaisDisponiveis[0];
       setSelectedPolicialId(first.id_policial);
@@ -480,27 +496,104 @@ export const OperadoresView: React.FC = () => {
             )}
 
             <form onSubmit={handleCadastrar} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Vincular ao Policial Militar <span className="text-red-500">*</span>
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Vincular ao Policial Militar <span className="text-red-500">*</span>
+                  </label>
+                  {policiaisDisponiveis.length > 0 && (
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {policiaisDisponiveisFiltrados.length} de {policiaisDisponiveis.length} sem operador
+                    </span>
+                  )}
+                </div>
+
                 {policiaisDisponiveis.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                  <p className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
                     Todos os policiais militares cadastrados no efetivo já possuem conta de operador associada. Cadastre um novo policial no módulo Efetivo primeiro.
                   </p>
                 ) : (
-                  <select
-                    value={selectedPolicialId ?? ''}
-                    onChange={(e) => handlePolicialChange(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    {policiaisDisponiveis.map((pol) => (
-                      <option key={pol.id_policial} value={pol.id_policial}>
-                        {pol.patente} {pol.nome_guerra} — Matrícula: {pol.matricula} ({pol.nome_completo})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-2">
+                    {/* Barra de Busca do Policial */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Buscar policial por nome de guerra, nome completo, patente ou matrícula..."
+                        value={buscaPolicialNovo}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setBuscaPolicialNovo(val);
+                          const term = val.toLowerCase().trim();
+                          const matches = policiaisDisponiveis.filter(
+                            (p) =>
+                              !term ||
+                              (p.nome_completo || '').toLowerCase().includes(term) ||
+                              (p.nome_guerra || '').toLowerCase().includes(term) ||
+                              (p.matricula || '').toLowerCase().includes(term) ||
+                              (p.patente || '').toLowerCase().includes(term)
+                          );
+                          if (matches.length > 0 && !matches.some((m) => m.id_policial === selectedPolicialId)) {
+                            handlePolicialChange(matches[0].id_policial);
+                          }
+                        }}
+                        className="w-full pl-8 pr-8 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                      />
+                      {buscaPolicialNovo && (
+                        <button
+                          type="button"
+                          onClick={() => setBuscaPolicialNovo('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                          title="Limpar busca"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {policiaisDisponiveisFiltrados.length === 0 ? (
+                      <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs flex items-center justify-between">
+                        <span>Nenhum policial militar localizado para "{buscaPolicialNovo}".</span>
+                        <button
+                          type="button"
+                          onClick={() => setBuscaPolicialNovo('')}
+                          className="text-[11px] font-semibold underline hover:text-amber-900"
+                        >
+                          Limpar busca
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedPolicialId ?? ''}
+                        onChange={(e) => handlePolicialChange(Number(e.target.value))}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                        required
+                      >
+                        {policiaisDisponiveisFiltrados.map((pol) => (
+                          <option key={pol.id_policial} value={pol.id_policial}>
+                            {pol.patente} {pol.nome_guerra} — Matrícula: {pol.matricula} ({pol.nome_completo})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Exibição detalhada do policial selecionado */}
+                    {selectedPolicial && (
+                      <div className="p-2.5 bg-blue-50/70 border border-blue-200/80 rounded-lg flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className="font-bold text-blue-950">
+                            {selectedPolicial.patente} {selectedPolicial.nome_guerra}
+                          </span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 bg-white text-blue-800 border border-blue-200 rounded font-semibold shrink-0">
+                            Mat: {selectedPolicial.matricula}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-600 truncate ml-2 max-w-[210px]" title={selectedPolicial.nome_completo}>
+                          {selectedPolicial.nome_completo}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
