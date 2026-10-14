@@ -712,6 +712,7 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
                         onChange={(e) => setTamanhoColete(e.target.value)}
                         className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900"
                       >
+                        <option value="PP">PP</option>
                         <option value="P">P</option>
                         <option value="M">M</option>
                         <option value="G">G</option>
