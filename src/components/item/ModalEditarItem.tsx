@@ -15,6 +15,7 @@ import {
   Info,
   Wrench,
   Clock,
+  Lock,
 } from 'lucide-react';
 
 interface ModalEditarItemProps {
@@ -28,12 +29,11 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
 
   const tiposMateriais = db.getTiposMateriais(item.modulo);
 
-  // Find linked tipo material or match by name
-  const [selectedTipoId, setSelectedTipoId] = useState<number | ''>(
+  // Linked tipo material (fixed, non-editable)
+  const selectedTipoId: number | '' =
     item.id_tipo_material ||
-      tiposMateriais.find((t) => t.nome.toLowerCase() === item.tipo_item.toLowerCase())?.id_tipo_material ||
-      ''
-  );
+    tiposMateriais.find((t) => t.nome.toLowerCase() === item.tipo_item.toLowerCase())?.id_tipo_material ||
+    '';
 
   const selectedTipo = tiposMateriais.find((t) => t.id_tipo_material === Number(selectedTipoId));
 
@@ -201,34 +201,30 @@ export const ModalEditarItem: React.FC<ModalEditarItemProps> = ({ item, onClose,
           </button>
         </div>
 
-        {/* Tipo Material Info Banner */}
+        {/* Tipo Material Info Banner (Não Editável) */}
         <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-          <div>
-            <span className="font-bold text-slate-700">Tipo de Material Vinculado: </span>
-            <select
-              value={selectedTipoId ?? ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSelectedTipoId(val ? Number(val) : '');
-                const t = tiposMateriais.find((tm) => tm.id_tipo_material === Number(val));
-                if (t) {
-                  setTipoItem((prev) => (!prev || tiposMateriais.some((tm) => tm.nome === prev) ? t.nome : prev));
-                }
-              }}
-              className="ml-2 bg-white border border-slate-300 rounded p-1 text-xs font-semibold text-slate-900"
-            >
-              {tiposMateriais.map((t) => (
-                <option key={t.id_tipo_material} value={t.id_tipo_material}>
-                  {t.nome} [{t.modo_controle}]
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-700">Tipo de Material Vinculado:</span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded-lg shadow-2xs">
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-bold text-slate-900">
+                {selectedTipo ? selectedTipo.nome : item.tipo_item}
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                Fixo
+              </span>
+            </div>
           </div>
           {selectedTipo && (
             <div className="flex items-center space-x-1.5 text-[11px]">
-              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold">
+              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold border border-blue-200">
                 Modo: {selectedTipo.modo_controle}
               </span>
+              {selectedTipo.categoria_especializada && selectedTipo.categoria_especializada.toLowerCase() !== 'nenhuma' && (
+                <span className="px-2 py-0.5 rounded bg-slate-200/80 text-slate-700 font-semibold">
+                  {selectedTipo.categoria_especializada}
+                </span>
+              )}
             </div>
           )}
         </div>

@@ -189,8 +189,10 @@ export const ArmasModule: React.FC = () => {
             <button
               id="btn-abrir-nova-cautela"
               onClick={() => setShowNovaCautelaModal(true)}
-              className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-md shadow-emerald-600/30 transition transform hover:-translate-y-0.5 focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-              title="Cautelar armamento e munições diretamente para um policial militar"
+              /* className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-md shadow-emerald-600/30 transition transform hover:-translate-y-0.5 focus:ring-2 focus:ring-emerald-500 cursor-pointer" */
+              className="inline-flex items-center space-x-2 px-6 py-3 rounded-xl bg-gray-400 text-white text-sm font-black opacity-60 cursor-not-allowed"
+              title= /*"Cautelar armamento e munições diretamente para um policial militar" */ "Função temporariamente desabilitada"
+              disabled
             >
               <Plus className="w-5 h-5" />
               <span>NOVA CAUTELA (PM)</span>
