@@ -21,6 +21,8 @@ import {
   FileDown,
   Info,
   History,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ModalNovaCautela } from '../cautela/ModalNovaCautela';
 import { ModalCargaSubunidade } from '../cautela/ModalCargaSubunidade';
@@ -50,6 +52,8 @@ export const ArmasModule: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCalibre, setFilterCalibre] = useState('todos');
   const [filterStatus, setFilterStatus] = useState('todos');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
 
   // Modals
   const [showNovaCautelaModal, setShowNovaCautelaModal] = useState(false);
@@ -158,6 +162,14 @@ export const ArmasModule: React.FC = () => {
 
     return matchesSearch && matchesCalibre && matchesStatus;
   });
+
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filteredArmas.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedArmas = pageSize === -1
+    ? filteredArmas
+    : filteredArmas.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const startIdx = filteredArmas.length === 0 ? 0 : (safePage - 1) * (pageSize === -1 ? filteredArmas.length : pageSize) + 1;
+  const endIdx = pageSize === -1 ? filteredArmas.length : Math.min(filteredArmas.length, safePage * pageSize);
 
   const formatHora = (dStr: string) => {
     return new Date(dStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -650,7 +662,7 @@ export const ArmasModule: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredArmas.map((it, idx) => {
+                  paginatedArmas.map((it, idx) => {
                     const isColeteVencido =
                       it.detalhe_colete && it.detalhe_colete.data_validade && new Date(it.detalhe_colete.data_validade) <= now;
 
@@ -761,6 +773,55 @@ export const ArmasModule: React.FC = () => {
                 )}
               </tbody>
             </table>
+
+            {/* Pagination & Volume Controls */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+              <div className="flex items-center space-x-2">
+                <span>Itens por página:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-700"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={-1}>Todos ({filteredArmas.length})</option>
+                </select>
+                <span className="text-slate-400">|</span>
+                <span>
+                  Exibindo <strong className="text-slate-900">{startIdx}-{endIdx}</strong> de <strong className="text-slate-900">{filteredArmas.length}</strong> itens
+                </span>
+              </div>
+
+              {pageSize !== -1 && totalPages > 1 && (
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={safePage <= 1}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    title="Página Anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-3 font-semibold text-slate-700">
+                    Página {safePage} de {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safePage >= totalPages}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    title="Próxima Página"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -934,77 +934,109 @@ export class DatabaseEngine {
   public getItensComDetalhes(modulo?: ModuloTipo): ItemComDetalhes[] {
     const list = modulo ? this.itens.filter((i) => i.modulo === modulo) : this.itens;
 
-    return list.map((item) => {
-      // Find matching TipoMaterial
-      const tipo_material = item.id_tipo_material
-        ? this.tiposMateriais.find((tm) => tm.id_tipo_material === item.id_tipo_material)
-        : this.tiposMateriais.find(
-            (tm) => tm.modulo === item.modulo && tm.nome.toLowerCase() === item.tipo_item.toLowerCase()
-          );
+    // Pre-build Maps for O(1) lookups to scale efficiently for high volumes of items
+    const tipoMapById = new Map<number, TipoMaterial>();
+    const tipoMapByModuloNome = new Map<string, TipoMaterial>();
+    for (const tm of this.tiposMateriais) {
+      tipoMapById.set(tm.id_tipo_material, tm);
+      tipoMapByModuloNome.set(`${tm.modulo}::${tm.nome.toLowerCase()}`, tm);
+    }
 
-      const detalhe_arma = this.detalheArma.find((d) => d.id_item === item.id_item);
-      const detalhe_colete = this.detalheColete.find((d) => d.id_item === item.id_item);
-      const detalhe_impo = this.detalheImpo.find((d) => d.id_item === item.id_item);
-      const detalhe_comunicacao = this.detalheComunicacao.find((d) => d.id_item === item.id_item);
-      const detalhe_viatura = this.detalheViatura.find((d) => d.id_item === item.id_item);
-      const detalhe_informatica = this.detalheInformatica.find((d) => d.id_item === item.id_item);
+    const armaMap = new Map<number, DetalheArma>();
+    for (const d of this.detalheArma) armaMap.set(d.id_item, d);
 
-      // Check current active cautela
-      let cautela_atual: ItemComDetalhes['cautela_atual'] = undefined;
-      const activeCautelaLink = this.cautelaItens.find((ci) => {
-        if (ci.id_item !== item.id_item) return false;
-        const c = this.cautelas.find((caut) => caut.id_cautela === ci.id_cautela);
-        return c && (c.status === 'Aberta' || c.status === 'Atrasada');
-      });
+    const coleteMap = new Map<number, DetalheColete>();
+    for (const d of this.detalheColete) coleteMap.set(d.id_item, d);
 
-      if (activeCautelaLink) {
-        const caut = this.cautelas.find((c) => c.id_cautela === activeCautelaLink.id_cautela);
-        const pol = caut ? this.policiais.find((p) => p.id_policial === caut.id_policial) : null;
-        const unid = caut && caut.id_unidade ? this.unidades.find((u) => u.id_unidade === caut.id_unidade) : null;
-        if (caut && pol) {
-          cautela_atual = {
-            id_cautela: caut.id_cautela,
+    const impoMap = new Map<number, DetalheImpo>();
+    for (const d of this.detalheImpo) impoMap.set(d.id_item, d);
+
+    const comMap = new Map<number, DetalheComunicacao>();
+    for (const d of this.detalheComunicacao) comMap.set(d.id_item, d);
+
+    const vtrMap = new Map<number, DetalheViatura>();
+    for (const d of this.detalheViatura) vtrMap.set(d.id_item, d);
+
+    const infMap = new Map<number, DetalheInformatica>();
+    for (const d of this.detalheInformatica) infMap.set(d.id_item, d);
+
+    const polMap = new Map<number, Policial>();
+    for (const p of this.policiais) polMap.set(p.id_policial, p);
+
+    const unidMap = new Map<number, Unidade>();
+    for (const u of this.unidades) unidMap.set(u.id_unidade, u);
+
+    const cautelaMap = new Map<number, Cautela>();
+    for (const c of this.cautelas) cautelaMap.set(c.id_cautela, c);
+
+    // Active cautela per item
+    const activeCautelaByItem = new Map<number, ItemComDetalhes['cautela_atual']>();
+    for (const ci of this.cautelaItens) {
+      const c = cautelaMap.get(ci.id_cautela);
+      if (c && (c.status === 'Aberta' || c.status === 'Atrasada')) {
+        const pol = polMap.get(c.id_policial);
+        const unid = c.id_unidade ? unidMap.get(c.id_unidade) : null;
+        if (pol) {
+          activeCautelaByItem.set(ci.id_item, {
+            id_cautela: c.id_cautela,
             policial_nome: pol.nome_guerra,
             policial_grad: pol.patente,
             policial_matricula: pol.matricula,
-            id_unidade: caut.id_unidade || null,
+            id_unidade: c.id_unidade || null,
             unidade_nome: unid ? unid.nome : null,
-            destinatario_tipo: caut.destinatario_tipo || (caut.id_unidade ? 'UNIDADE' : 'POLICIAL'),
-            data_retirada: caut.data_retirada,
-            tipo: caut.tipo,
-            status: caut.status,
-          };
+            destinatario_tipo: c.destinatario_tipo || (c.id_unidade ? 'UNIDADE' : 'POLICIAL'),
+            data_retirada: c.data_retirada,
+            tipo: c.tipo,
+            status: c.status,
+          });
         }
       }
+    }
 
-      // Check current active alocação (picking the latest active allocation)
-      let alocacao_atual: ItemComDetalhes['alocacao_atual'] = undefined;
-      const itemAlocLinks = this.alocacaoItens.filter((ai) => ai.id_item === item.id_item);
-      const activeAlocs = itemAlocLinks
-        .map((ai) => this.alocacoes.find((a) => a.id_alocacao === ai.id_alocacao))
-        .filter((a): a is AlocacaoUnidade => !!a && a.status === 'Ativa');
+    // Active allocation per item
+    const alocacaoMap = new Map<number, AlocacaoUnidade>();
+    for (const a of this.alocacoes) {
+      if (a.status === 'Ativa') {
+        alocacaoMap.set(a.id_alocacao, a);
+      }
+    }
 
-      if (activeAlocs.length > 0) {
-        // Sort descending: latest data_alocacao / highest id_alocacao first
-        activeAlocs.sort((a, b) => {
-          const timeA = a.data_alocacao ? new Date(a.data_alocacao).getTime() : 0;
-          const timeB = b.data_alocacao ? new Date(b.data_alocacao).getTime() : 0;
-          if (timeB !== timeA) return timeB - timeA;
-          return (b.id_alocacao || 0) - (a.id_alocacao || 0);
-        });
-
-        const latestAloc = activeAlocs[0];
-        const unid = this.unidades.find((u) => u.id_unidade === latestAloc.id_unidade);
-
+    const activeAlocByItem = new Map<number, ItemComDetalhes['alocacao_atual']>();
+    for (const ai of this.alocacaoItens) {
+      const a = alocacaoMap.get(ai.id_alocacao);
+      if (a) {
+        const unid = unidMap.get(a.id_unidade);
         if (unid) {
-          alocacao_atual = {
-            id_alocacao: latestAloc.id_alocacao,
-            id_unidade: latestAloc.id_unidade,
-            unidade_nome: unid.nome,
-            data_alocacao: latestAloc.data_alocacao,
-          };
+          const current = activeAlocByItem.get(ai.id_item);
+          const timeA = a.data_alocacao ? new Date(a.data_alocacao).getTime() : 0;
+          const timeCurr = current?.data_alocacao ? new Date(current.data_alocacao).getTime() : 0;
+          if (!current || timeA > timeCurr || (timeA === timeCurr && (a.id_alocacao || 0) > (current.id_alocacao || 0))) {
+            activeAlocByItem.set(ai.id_item, {
+              id_alocacao: a.id_alocacao,
+              id_unidade: a.id_unidade,
+              unidade_nome: unid.nome,
+              data_alocacao: a.data_alocacao,
+            });
+          }
         }
       }
+    }
+
+    return list.map((item) => {
+      // Find matching TipoMaterial (O(1))
+      const tipo_material = item.id_tipo_material
+        ? tipoMapById.get(item.id_tipo_material)
+        : tipoMapByModuloNome.get(`${item.modulo}::${item.tipo_item.toLowerCase()}`);
+
+      const detalhe_arma = armaMap.get(item.id_item);
+      const detalhe_colete = coleteMap.get(item.id_item);
+      const detalhe_impo = impoMap.get(item.id_item);
+      const detalhe_comunicacao = comMap.get(item.id_item);
+      const detalhe_viatura = vtrMap.get(item.id_item);
+      const detalhe_informatica = infMap.get(item.id_item);
+
+      const cautela_atual = activeCautelaByItem.get(item.id_item);
+      const alocacao_atual = activeAlocByItem.get(item.id_item);
 
       // Compute consistent operational status
       let effectiveStatus = item.status;
@@ -2230,7 +2262,7 @@ export class DatabaseEngine {
     }
   }
 
-  public cadastrarItem(
+  public async cadastrarItem(
     item: Omit<ItemPatrimonio, 'id_item'>,
     detalhes?: {
       arma?: Omit<DetalheArma, 'id_item'>;
@@ -2240,7 +2272,7 @@ export class DatabaseEngine {
       viatura?: Omit<DetalheViatura, 'id_item'>;
       informatica?: Omit<DetalheInformatica, 'id_item'>;
     }
-  ): { success: boolean; id_item?: number; error?: string } {
+  ): Promise<{ success: boolean; id_item?: number; error?: string }> {
     try {
       const itemFinal = { ...item };
 
@@ -2252,28 +2284,29 @@ export class DatabaseEngine {
       }
 
       // Validate against TipoMaterial if provided
+      let tipoObj: TipoMaterial | undefined;
       if (itemFinal.id_tipo_material) {
-        const tipo = this.getTipoMaterialById(itemFinal.id_tipo_material);
-        if (tipo) {
-          itemFinal.modulo = tipo.modulo;
+        tipoObj = this.getTipoMaterialById(itemFinal.id_tipo_material);
+        if (tipoObj) {
+          itemFinal.modulo = tipoObj.modulo;
           // Retain custom description/name entered by the user, only defaulting to tipo.nome if empty
           if (!itemFinal.tipo_item || !itemFinal.tipo_item.trim()) {
-            itemFinal.tipo_item = tipo.nome;
+            itemFinal.tipo_item = tipoObj.nome;
           } else {
             itemFinal.tipo_item = itemFinal.tipo_item.trim();
           }
 
-          if (tipo.exige_numero_serie && (!itemFinal.numero_serie || !itemFinal.numero_serie.trim())) {
-            return { success: false, error: `Número de série é obrigatório para "${tipo.nome}".` };
+          if (tipoObj.exige_numero_serie && (!itemFinal.numero_serie || !itemFinal.numero_serie.trim())) {
+            return { success: false, error: `Número de série é obrigatório para "${tipoObj.nome}".` };
           }
-          if (tipo.permite_numero_serie === false) {
+          if (tipoObj.permite_numero_serie === false) {
             itemFinal.numero_serie = null;
           }
 
-          if (tipo.exige_numero_tombo && (!itemFinal.numero_tombo || !itemFinal.numero_tombo.trim())) {
-            return { success: false, error: `Número de tombo é obrigatório para "${tipo.nome}".` };
+          if (tipoObj.exige_numero_tombo && (!itemFinal.numero_tombo || !itemFinal.numero_tombo.trim())) {
+            return { success: false, error: `Número de tombo é obrigatório para "${tipoObj.nome}".` };
           }
-          if (tipo.permite_numero_tombo === false) {
+          if (tipoObj.permite_numero_tombo === false) {
             itemFinal.numero_tombo = null;
           }
         }
@@ -2331,42 +2364,64 @@ export class DatabaseEngine {
         }
       }
 
-      const nextId = Math.max(0, ...this.itens.map((i) => i.id_item)) + 1;
-      
       // Auto-set data_inicio_manutencao if created directly in maintenance
       let dataInicioManutencao = itemFinal.data_inicio_manutencao;
       if ((itemFinal.status === 'Manutenção' || itemFinal.status === 'Danificado / Avariado') && !dataInicioManutencao) {
         dataInicioManutencao = new Date().toISOString();
       }
 
+      const client = getSupabaseClient();
+      let finalId: number;
+
+      if (client) {
+        // Persist directly to Supabase first with isNew: true to obtain the definitive PostgreSQL identity ID
+        const pushRes = await pushItemToSupabase(
+          { ...itemFinal, id_item: 0 } as ItemPatrimonio,
+          detalhes as any,
+          tipoObj,
+          { isNew: true }
+        );
+
+        if (!pushRes.success || !pushRes.definitiveId) {
+          return {
+            success: false,
+            error: pushRes.error || 'Falha ao persistir item no banco de dados Supabase.',
+          };
+        }
+        finalId = Number(pushRes.definitiveId);
+      } else {
+        // Offline / disconnected mode fallback
+        finalId = Math.max(0, ...this.itens.map((i) => i.id_item)) + 1;
+      }
+
       const novoItem: ItemPatrimonio = {
         ...itemFinal,
-        id_item: nextId,
+        id_item: finalId,
         data_inicio_manutencao: dataInicioManutencao,
       };
       this.itens.push(novoItem);
 
       if (detalhes?.arma) {
-        this.detalheArma.push({ id_item: nextId, ...detalhes.arma });
+        this.detalheArma.push({ id_item: finalId, ...detalhes.arma });
       }
       if (detalhes?.colete) {
-        this.detalheColete.push({ id_item: nextId, ...detalhes.colete });
+        this.detalheColete.push({ id_item: finalId, ...detalhes.colete });
       }
       if (detalhes?.impo) {
-        this.detalheImpo.push({ id_item: nextId, ...detalhes.impo });
+        this.detalheImpo.push({ id_item: finalId, ...detalhes.impo });
       }
       if (detalhes?.comunicacao) {
-        this.detalheComunicacao.push({ id_item: nextId, ...detalhes.comunicacao });
+        this.detalheComunicacao.push({ id_item: finalId, ...detalhes.comunicacao });
       }
       if (detalhes?.viatura) {
-        this.detalheViatura.push({ id_item: nextId, ...detalhes.viatura });
+        this.detalheViatura.push({ id_item: finalId, ...detalhes.viatura });
       }
       if (detalhes?.informatica) {
-        this.detalheInformatica.push({ id_item: nextId, ...detalhes.informatica });
+        this.detalheInformatica.push({ id_item: finalId, ...detalhes.informatica });
       }
 
       this.registrarAuditoria('CADASTRO_ITEM_PATRIMONIO', 'item_patrimonio', {
-        id_item: nextId,
+        id_item: finalId,
         tipo_item: novoItem.tipo_item,
         modulo: novoItem.modulo,
         numero_tombo: novoItem.numero_tombo,
@@ -2376,44 +2431,7 @@ export class DatabaseEngine {
       this.persistAll();
       this.notify();
 
-      // Trigger asynchronous Supabase background push if connected
-      const armaDet = detalhes?.arma ? { id_item: nextId, ...detalhes.arma } : undefined;
-      const coleteDet = detalhes?.colete ? { id_item: nextId, ...detalhes.colete } : undefined;
-      const impoDet = detalhes?.impo ? { id_item: nextId, ...detalhes.impo } : undefined;
-      const comDet = detalhes?.comunicacao ? { id_item: nextId, ...detalhes.comunicacao } : undefined;
-      const vtrDet = detalhes?.viatura ? { id_item: nextId, ...detalhes.viatura } : undefined;
-      const infDet = detalhes?.informatica ? { id_item: nextId, ...detalhes.informatica } : undefined;
-
-      pushItemToSupabase(novoItem, {
-        arma: armaDet,
-        colete: coleteDet,
-        impo: impoDet,
-        comunicacao: comDet,
-        viatura: vtrDet,
-        informatica: infDet,
-      }).then((res) => {
-        if (res.success && res.definitiveId && res.definitiveId !== nextId) {
-          const finalId = Number(res.definitiveId);
-          const it = this.itens.find((i) => i.id_item === nextId);
-          if (it) it.id_item = finalId;
-          const a = this.detalheArma.find((d) => d.id_item === nextId);
-          if (a) a.id_item = finalId;
-          const c = this.detalheColete.find((d) => d.id_item === nextId);
-          if (c) c.id_item = finalId;
-          const imp = this.detalheImpo.find((d) => d.id_item === nextId);
-          if (imp) imp.id_item = finalId;
-          const com = this.detalheComunicacao.find((d) => d.id_item === nextId);
-          if (com) com.id_item = finalId;
-          const vtr = this.detalheViatura.find((d) => d.id_item === nextId);
-          if (vtr) vtr.id_item = finalId;
-          const inf = this.detalheInformatica.find((d) => d.id_item === nextId);
-          if (inf) inf.id_item = finalId;
-          this.persistAll();
-          this.notify();
-        }
-      }).catch((e) => console.warn('Supabase sync notice:', e));
-
-      return { success: true, id_item: nextId };
+      return { success: true, id_item: finalId };
     } catch (err: any) {
       return { success: false, error: err.message || 'Erro ao cadastrar item' };
     }

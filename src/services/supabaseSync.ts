@@ -192,7 +192,8 @@ export async function pushItemToSupabase(
     viatura?: DetalheViatura;
     informatica?: DetalheInformatica;
   },
-  tipoMaterial?: TipoMaterial
+  tipoMaterial?: TipoMaterial,
+  options?: { isNew?: boolean }
 ): Promise<SyncOperationResult<{ id_item: number }>> {
   const client = getSupabaseClient();
   if (!client) {
@@ -247,8 +248,8 @@ export async function pushItemToSupabase(
     // 2. Check if item already exists in Supabase by natural unique keys (placa, prefixo, imei_mac, numero_serie, numero_tombo, or ID)
     let existingDbId: number | null = null;
 
-    // 2.a If item has an explicit ID in Supabase
-    if (item.id_item && Number(item.id_item) > 0) {
+    // 2.a If item has an explicit ID in Supabase and this is an UPDATE (NOT a new insertion)
+    if (!options?.isNew && item.id_item && Number(item.id_item) > 0) {
       const { data: existingById } = await client
         .from('item_patrimonio')
         .select('id_item')
@@ -270,6 +271,9 @@ export async function pushItemToSupabase(
         .maybeSingle();
 
       if (existingByPlaca?.id_item) {
+        if (options?.isNew) {
+          return { success: false, error: `Já existe uma viatura cadastrada no Supabase com a placa "${cleanPlaca}".` };
+        }
         existingDbId = Number(existingByPlaca.id_item);
       }
     }
@@ -283,6 +287,9 @@ export async function pushItemToSupabase(
         .maybeSingle();
 
       if (existingByPrefixo?.id_item) {
+        if (options?.isNew) {
+          return { success: false, error: `Já existe uma viatura cadastrada no Supabase com o prefixo "${cleanPrefixo}".` };
+        }
         existingDbId = Number(existingByPrefixo.id_item);
       }
     }
@@ -296,6 +303,9 @@ export async function pushItemToSupabase(
         .maybeSingle();
 
       if (existingBySerie?.id_item) {
+        if (options?.isNew) {
+          return { success: false, error: `Já existe um item cadastrado no Supabase com o número de série "${item.numero_serie.trim()}".` };
+        }
         existingDbId = Number(existingBySerie.id_item);
       }
     }
@@ -309,6 +319,9 @@ export async function pushItemToSupabase(
         .maybeSingle();
 
       if (existingByTombo?.id_item) {
+        if (options?.isNew) {
+          return { success: false, error: `Já existe um item cadastrado no Supabase com o número de tombo "${item.numero_tombo.trim()}".` };
+        }
         existingDbId = Number(existingByTombo.id_item);
       }
     }
@@ -322,6 +335,9 @@ export async function pushItemToSupabase(
         .maybeSingle();
 
       if (existingByImei?.id_item) {
+        if (options?.isNew) {
+          return { success: false, error: `Já existe um equipamento cadastrado no Supabase com o IMEI/MAC "${detalhes.comunicacao.imei_mac.trim()}".` };
+        }
         existingDbId = Number(existingByImei.id_item);
       }
     }
@@ -342,7 +358,7 @@ export async function pushItemToSupabase(
       motivo_manutencao: item.motivo_manutencao || null,
     };
 
-    if (existingDbId) {
+    if (existingDbId && !options?.isNew) {
       // UPDATE existing item (DO NOT pass id_item in update body)
       const { data: updatedItem, error: updateErr } = await client
         .from('item_patrimonio')
@@ -372,7 +388,7 @@ export async function pushItemToSupabase(
 
       if (insertErr) {
         // If duplicate key (23505) occurred on insertion (e.g. numero_serie or numero_tombo collision)
-        if (insertErr.code === '23505') {
+        if (insertErr.code === '23505' && !options?.isNew) {
           let retryId: number | null = null;
           if (item.numero_serie && item.numero_serie.trim()) {
             const { data: rSerie } = await client.from('item_patrimonio').select('id_item').eq('numero_serie', item.numero_serie.trim()).maybeSingle();
@@ -392,9 +408,12 @@ export async function pushItemToSupabase(
 
         if (!definitiveId) {
           console.error('[Supabase] Falha ao inserir item_patrimonio:', insertErr);
+          const errorMsg = insertErr.code === '23505'
+            ? 'Já existe um item cadastrado com este número de série ou tombo patrimonial (chave única violada).'
+            : `Falha ao inserir item no Supabase: ${insertErr.message}`;
           return {
             success: false,
-            error: `Falha ao inserir item no Supabase: ${insertErr.message}`,
+            error: errorMsg,
             code: insertErr.code,
             details: insertErr.details,
             hint: insertErr.hint,
@@ -2858,6 +2877,44 @@ export async function pushAllDataToSupabase(data: {
 }
 
 /**
+ * Fetches all rows from a Supabase table in batches of 1000,
+ * overcoming the default PostgREST row limit for high data volumes.
+ */
+async function fetchAllRowsFromTable<T = any>(
+  client: any,
+  table: string,
+  orderCol?: string
+): Promise<{ data: T[]; error: any }> {
+  const batchSize = 1000;
+  const allRows: T[] = [];
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = client.from(table).select('*');
+    if (orderCol) {
+      query = query.order(orderCol, { ascending: true });
+    }
+    query = query.range(from, from + batchSize - 1);
+    const { data, error } = await query;
+    if (error) {
+      return { data: allRows, error };
+    }
+    if (!data || data.length === 0) {
+      break;
+    }
+    allRows.push(...(data as T[]));
+    if (data.length < batchSize) {
+      hasMore = false;
+    } else {
+      from += batchSize;
+    }
+  }
+
+  return { data: allRows, error: null };
+}
+
+/**
  * Downloads all data from Supabase tables to replace/hydrate local state.
  */
 export async function pullAllDataFromSupabase(): Promise<{
@@ -2892,26 +2949,26 @@ export async function pullAllDataFromSupabase(): Promise<{
       extraviosRes,
       auditoriaRes,
     ] = await Promise.all([
-      client.from('unidade').select('*'),
-      client.from('policial').select('*'),
-      client.from('operador_sistema').select('*'),
-      client.from('tipo_material').select('*'),
-      client.from('item_patrimonio').select('*'),
-      client.from('detalhe_arma').select('*'),
-      client.from('detalhe_colete').select('*'),
-      client.from('detalhe_impo').select('*'),
-      client.from('detalhe_comunicacao').select('*'),
-      client.from('detalhe_viatura').select('*'),
-      client.from('detalhe_informatica').select('*'),
-      client.from('estoque_lote').select('*'),
-      client.from('cautela').select('*'),
-      client.from('cautela_item').select('*'),
-      client.from('cautela_estoque').select('*'),
-      client.from('alocacao_unidade').select('*'),
-      client.from('alocacao_item').select('*'),
-      client.from('registro_disparo').select('*'),
-      client.from('registro_extravio').select('*'),
-      client.from('auditoria_sistema').select('*').order('data_hora', { ascending: false }).limit(50),
+      fetchAllRowsFromTable(client, 'unidade', 'id_unidade'),
+      fetchAllRowsFromTable(client, 'policial', 'id_policial'),
+      fetchAllRowsFromTable(client, 'operador_sistema', 'id_operador'),
+      fetchAllRowsFromTable(client, 'tipo_material', 'id_tipo_material'),
+      fetchAllRowsFromTable(client, 'item_patrimonio', 'id_item'),
+      fetchAllRowsFromTable(client, 'detalhe_arma', 'id_item'),
+      fetchAllRowsFromTable(client, 'detalhe_colete', 'id_item'),
+      fetchAllRowsFromTable(client, 'detalhe_impo', 'id_item'),
+      fetchAllRowsFromTable(client, 'detalhe_comunicacao', 'id_item'),
+      fetchAllRowsFromTable(client, 'detalhe_viatura', 'id_item'),
+      fetchAllRowsFromTable(client, 'detalhe_informatica', 'id_item'),
+      fetchAllRowsFromTable(client, 'estoque_lote', 'id_lote'),
+      fetchAllRowsFromTable(client, 'cautela', 'id_cautela'),
+      fetchAllRowsFromTable(client, 'cautela_item', 'id_cautela_item'),
+      fetchAllRowsFromTable(client, 'cautela_estoque', 'id_cautela_estoque'),
+      fetchAllRowsFromTable(client, 'alocacao_unidade', 'id_alocacao'),
+      fetchAllRowsFromTable(client, 'alocacao_item', 'id_alocacao_item'),
+      fetchAllRowsFromTable(client, 'registro_disparo', 'id_disparo'),
+      fetchAllRowsFromTable(client, 'registro_extravio', 'id_extravio'),
+      client.from('auditoria_sistema').select('*').order('data_hora', { ascending: false }).limit(100),
     ]);
 
     if (itensRes.error && itensRes.error.code === '42P01') {

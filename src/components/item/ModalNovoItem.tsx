@@ -98,6 +98,7 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
   const [loteQtd, setLoteQtd] = useState(100);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Determine current active specialized detail category (strictly from selectedTipo, never from typed strings or fallbacks)
   const getCategoriaEspecializada = (): string => {
@@ -115,8 +116,9 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
     (selectedTipo?.id_tipo_material === 8 ||
       (selectedTipo?.categoria_especializada === 'ARMA' && (tabType === 'lote' || selectedTipo?.modo_controle === 'QUANTIDADE')));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     setErrorMessage(null);
 
     // 1. Cadastrar Quantidade / Estoque
@@ -126,23 +128,30 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
         return;
       }
 
-      const res = db.cadastrarLote({
-        modulo,
-        id_tipo_material: selectedTipo?.id_tipo_material || null,
-        tipo_item: tipoItem,
-        marca: marca || null,
-        modelo: modelo || null,
-        calibre: isMunicaoLote && calibre.trim() ? calibre.trim() : null,
-        lote_fabricacao: null,
-        data_validade: loteValidade ? loteValidade : null,
-        quantidade_atual: loteQtd,
-        observacao: observacao || null,
-      });
+      setIsSaving(true);
+      try {
+        const res = db.cadastrarLote({
+          modulo,
+          id_tipo_material: selectedTipo?.id_tipo_material || null,
+          tipo_item: tipoItem,
+          marca: marca || null,
+          modelo: modelo || null,
+          calibre: isMunicaoLote && calibre.trim() ? calibre.trim() : null,
+          lote_fabricacao: null,
+          data_validade: loteValidade ? loteValidade : null,
+          quantidade_atual: loteQtd,
+          observacao: observacao || null,
+        });
 
-      if (res.success) {
-        onSuccess();
-      } else {
-        setErrorMessage(res.error || 'Erro ao cadastrar estoque quantitativo.');
+        if (res.success) {
+          onSuccess();
+        } else {
+          setErrorMessage(res.error || 'Erro ao cadastrar estoque quantitativo.');
+        }
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Erro ao cadastrar lote de estoque.');
+      } finally {
+        setIsSaving(false);
       }
       return;
     }
@@ -220,11 +229,18 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
       };
     }
 
-    const res = db.cadastrarItem(itemPayload, detalhes);
-    if (res.success) {
-      onSuccess();
-    } else {
-      setErrorMessage(res.error || 'Erro ao cadastrar patrimônio.');
+    setIsSaving(true);
+    try {
+      const res = await db.cadastrarItem(itemPayload, detalhes);
+      if (res.success) {
+        onSuccess();
+      } else {
+        setErrorMessage(res.error || 'Erro ao cadastrar patrimônio.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao cadastrar patrimônio.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -843,10 +859,22 @@ export const ModalNovoItem: React.FC<ModalNovoItemProps> = ({ modulo, onClose, o
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition flex items-center space-x-1.5"
+              disabled={isSaving}
+              className={`px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition flex items-center space-x-1.5 ${
+                isSaving ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Salvar no Patrimônio</span>
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Gravando no Banco...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Salvar no Patrimônio</span>
+                </>
+              )}
             </button>
           </div>
         </form>
